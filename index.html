@@ -25,6 +25,29 @@
 <li><a href="8.md">frontends模块</a></li>
 <li><a href="9.md">失踪的frontends</a></li>
 <li><a href="10.md">frontends发射器</a></li>
+<li><a href="11.md">套娃越开越小，这坑是越挖越大</a></li>
+<li><a href="12.md">数据结构</a></li>
+<li><a href="13.md">LLB第一印象</a></li>
+<li><a href="14.md">LLB简单不简单</a></li>
+<li><a href="15.md">神奇的llb.State</a></li>
+<li><a href="16.md">神奇llb.State之代码实现</a></li>
+<li><a href="17.md">Definition</a></li>
+<li><a href="18.md">llb.State活学活用，融汇贯通</a></li>
+<li><a href="19.md">Edge</a></li>
+<li><a href="20.md">我从哪儿来？到哪儿去？</a></li>
+<li><a href="21.md">是时候开始Build了</a></li>
+<li><a href="22.md">jobs的世界</a></li>
+<li><a href="23.md">jobs scheduler</a></li>
+<li><a href="24.md">神奇的Pipe</a></li>
+<li><a href="25.md">Pipe设计原理</a></li>
+<li><a href="26.md">Scheduler的构建源Edge</a></li>
+<li><a href="27.md">编排高手Scheduler</a></li>
+<li><a href="28.md">SourceOp CacheMap</a></li>
+<li><a href="29.md">SourceOp CacheKey</a></li>
+<li><a href="30.md">SourceOp Exec</a></li>
+<li><a href="31.md">ExecOp</a></li>
+<li><a href="32.md">ExecOp的运行时</a></li>
+<li><a href="33.md">完美收关Exporter</a></li>
 <li><a href="content.md">Content</a></li>
 </ul>
 <h1>研发效能</h1>
@@ -516,6 +539,2219 @@ func main() {
 这也是大家不喜欢看别人源码的原因，很多时候，比起看别人的代码，更想自己从头写一份。</p>
 <p>袁小白下一次又会卡在哪儿呢？<br />
 不用担心，很快就会看到的。</p>
+<h1>套娃越开越小，这坑是越挖越大</h1>
+<p>有了龙飞的指导后，总算是将断了的线索又重新给接了起来。<br />
+袁小白的理解是，前面就像是客户端，准备参数，向服务器发送请求，服务器接收到请求后，进行处理。<br />
+而且服务器提供的是GRPC类型的服务，应用的是HTTP协议。<br />
+基于这样的理解，袁小白搓着手，信心满满的打开了下一个<code>Solve</code>方法：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/e57d7af3df4c42849c253423ac962d94~tplv-k3u1fbpfcp-watermark.image?" /><br />
+可以看到，在control里面，调用solver，并进行<code>Solver</code>。<br />
+这里的参数什得我们关注，如有传入Frontend相关信息，不过req.Frontend是字符型，也就是说这里传的只是Frontend的类别，比如咱们这里就是dockerfile。<br />
+下面的Definition也值得我们关注，还记得前面有提到，如果是<code>./example | buildctl build</code>，那么这里的Definition就是从标准输入读取的，目前我们用的是读取dockerfile的方法，也就是说这一项是为空的。</p>
+<p>接下来再看<code>c.solver.Solve(...)</code>:<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/96696f2440a449bf8d0bc054c106e35d~tplv-k3u1fbpfcp-watermark.image?" /><br />
+终于我们看到了frontend.Result，也就是说这里会用到Frontend，解析dockerfile后，产出结果。<br />
+在这里分了两种情况：</p>
+<ul>
+<li>如果req.Definition == nil且req.Frontend == &quot;&quot;，很明显，我们不属于这种情况</li>
+<li>剩下的都是由s.Bridge(j).Solve(...)来处理了</li>
+</ul>
+<p>自然而然，袁小白，又打开了bridge，查找起了又一个Solve:<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/e0c962be1385459b8e484edcffc2d8eb~tplv-k3u1fbpfcp-watermark.image?" /><br />
+果不其然，这里我们终于找到了frontend使用的地方，通过b.frontends map用req.Frontend取得frontend实例，然后用f.Solve真正的开开始解析。</p>
+<p>那这些实例又是在哪儿初始化的呢？<br />
+这时，袁小白想起来龙飞说的话 - 初始化都是在创建controller实例了时候进行的。<br />
+想到这，就打开了buildkitd，的主函数，并查找实例化controller的地方：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/3702b0c0a9ce448aab25480b414fa8cb~tplv-k3u1fbpfcp-watermark.image?" /><br />
+果然如龙飞所说，就是在newController的时候，也初始化好了frontends，并且这里就有dockerfile的类型，而且保存的是一个GatewayForwarder实例，但可以看出，真正处理的还是dockerfile.Build方法，终于找到了这里，袁小白不禁兴奋的咽了口口水。</p>
+<p>可好景不长，这个Build函数的将近500行，扫了一眼代码，挫败感又卷土重来:<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/fbdfaf3c82bb427e8d8bb066ff10a987~tplv-k3u1fbpfcp-watermark.image?" /><br />
+没办法，只好硬着头皮上了。</p>
+<p>前面的一些常规配置读取到还无关紧要，但后面的一串操作让袁小白不知所措。<br />
+比如llb系列：<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8af53c66e6b14e119ac9440e5c01268d~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>再比如这个长长的Dockerfile2LLB方法：<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/71e4ca3a7fb34076927fa1f6ea9e03ea~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>最奇怪的是，这里面又来了一次c.Resolve:<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/bf5a08d6dc3344aa96853cd3e35df186~tplv-k3u1fbpfcp-watermark.image?" /><br />
+咱们不是刚从client.Solve过来的吗？</p>
+<p>问题一个接一个，实在是泥牛入海，使不上劲的感觉。</p>
+<h1>数据结构</h1>
+<p>龙飞似乎预感到了袁小白会再次发现新的疑惑点，因为龙飞自己通过上一次和袁小白一起梳理后，也感觉到有一些细节在第一次的梳理时，是有漏掉的，带着这些新的线节，龙飞将Frontends flow又重新整理了一遍：</p>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/084f0f1bbe4b4cde9aa9f1074b41b74b~tplv-k3u1fbpfcp-watermark.image?" /><br />
+袁小白一看见这张图，好像脑子里正在到处游走的信息，一下子都找到了自己的位置，独立确有了明显的规律。</p>
+<p>看到袁小白的目光被Frontend flow给吸引住，龙飞开始说道。</p>
+<p>这个解析流程确实有点绕，单单一个solve，就出现了8次，这就会让我们产生一些疑问：这些solve都是一个意思吗，在不同的对象里，如buildctl, client, control, solver等等，这些solve在这些对象里难道都是拥有同样的意义？<br />
+不过不要急，让我们按这个流程再走一遍，看看作者到底想表达什么？</p>
+<ul>
+<li>用户调用命令行<code>buildctl build --frontend dockerfile.v0 --local dockerfile ...</code>，这里是整个流程的触发点，这里我们要开始解析用户的构建需求，而这些需求都按dockerfile的格式表达了出来</li>
+<li>因为是C/S(client/server)结构，所以在客户端，我们需要有一个<code>client</code>，用来处理网络请求</li>
+<li>可能还需要更确切的客户端，所以这里需要的一个controlClient，用来发送解析请求</li>
+<li>终于，可以发出解析请求了，这里需要发送的是grpc请求 - moby.buildkit.v1.Control/Solve</li>
+<li>前端发出请求后，剩下的也就要交给后端了，这里后端为了处理好解析请求，需要做好充足的准备。比如需要准备好frontends实例，因为需求上需要支持多种不同的frontend，而dockerfile只是前端的一种，况且这还是亲儿子，必需得支持好。其次为了GRPC的注册和管理能统一管理，这里control需要关心的就是提供对应的方法函数。而GRPC服务相关的就交给controller.Register了，像URL匹配，及GRPC服务相关的设置项都统一提前准备好。因为有了这些准备，control成功接收了前端发来的解析请求。</li>
+<li>为了正确解析，solver需要将真正提供解析服务的frontend关联起来，所以需要一个bridge</li>
+<li>bridge并不能自己解析，需要找到真正的frontend实例，如这里的frontends[&quot;dockerfile.v0&quot;]，也就是frontend中dockerfile提供的build方法，因为需要解析中间状态，所以有一个回调，这里要注意，虽然都是调用的llbbridge.solve，但两次所走的代码分支是不一样的：<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/612c497fbdca48789ef8c905f36ebefb~tplv-k3u1fbpfcp-watermark.image?" /><br />
+分别是第一次req里传过来的是字符型frontend种类，第二次是经过解析后的拥有req.Definition，并用ResultProxy封装了已解析的dockerfile信息，只不过转换成了Definition。</li>
+</ul>
+<p>这里也正是袁小白不明白的地方，为什么在dockerfile.build里，又会出现c.solve，终于在这里找到了答案。</p>
+<p>但是，如果想要更清楚的理解这里面的逻辑关系，我们需要梳理出数据的形式转换过程：</p>
+<p><strong>dockerfile -&gt; Definition -&gt; Edge</strong></p>
+<p>那么接下来，我们可以去了解一下dockerfile的解析，及LLB中的数据格式转换。</p>
+<p>看来，我们只是刚刚开始，路还很漫长，袁小白深深的吸了口气。</p>
+<h1 id="llb">LLB第一印象</h1>
+<p>转眼一周就过去了，周五的例会上袁小白分享了这一周的曲折经历，和对代码结构的理解。<br />
+龙飞也进行了补充。<br />
+贾大智看到大家的热情，对两人赞不绝口。<br />
+但没有太多关于代码的更新，这让袁小白心生不满。<br />
+心想，我和龙飞都花了这么多时间在代码上，大家都有不错的进展，而你代码相关的，一点更新都没有，这不公平啊。</p>
+<p>周未袁小白闲着无聊，脑海里又浮现了龙飞提出来的问题：<br />
+<strong>数据结构之间的关系到底是什么样的？</strong></p>
+<p>带着这个问题，袁小白想到，目前看到了dockerfile.build，在这里面出现了三个地方是和数据相关的。</p>
+<p>一个是将dockerfile转换成src，虽然还没有看这里的实现细节，看起来好像是将dockerfile转换成了llb语言：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/fadd98ee831d44209a9e462093e3ad0b~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>还有一个就是dockerfiel2llb.Dockerfile2LLB:<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/dbddf815f4ac48b7b1479ac68b02ef20~tplv-k3u1fbpfcp-watermark.image?" /><br />
+这里不禁让袁小白有点困惑，前面不是已经转了吗，为什么这个地方还又再转一次？难道两次不一样？</p>
+<p>最后这个地方也来源自dockerfile2llb.Dockerfile2LLB，因为这里有一个依赖条件，那就是参数中的<strong>dtDockerfile</strong>这个[]byte类型，将硬盘上的dockerfile加载到了内存空间，那这个又是在哪里准备的呢？<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/17ca17e857fd4697a019f053e0f19f1f~tplv-k3u1fbpfcp-watermark.image?" /><br />
+虽然找到了这些信息是如何读取的，解决了一个问题。<br />
+但是又出现了三个问题：<br />
+为什么这里又要c.Solve一下？<br />
+为什么要取出res.SingleRef？<br />
+ref又是什么？</p>
+<p>虽然现在问题不少，但最让袁小白想了解的，还是这个神秘的LLB，因为所有的问题似乎都与这个LLB有某种联系，LLB究竟是干什么的呢？</p>
+<p>目前对LLB的了解，似乎接近于零，因为哪怕是从贾大智对大致架构的<a href="https://juejin.cn/post/7028192294016647182">解读</a>，都没有提到这一块。<br />
+这真是让人难以相信，这么重要的模块居然没有说明！</p>
+<p>袁小白很快便找到了llb位置所在，位于client包下：</p>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/527c2d04467b4bec9add8bbe72ea9c01~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>看着这么多的新文件，这让袁小白感觉又进入了另一个元宇宙...</p>
+<p>不过让人开心的是，这里有很多以_test结尾的文件，习惯了TDD（Test Driven Development - 测试驱动开发）后，感觉测试就是另一种类型的文档，不仅能说明很多信息，还可以用来执行，解答疑惑。</p>
+<p>但袁小白很快发现，这些都是一些局部的测试，并没有让自己有一个全局的理解，LLB到底是干什么的？<br />
+通过全局查找，袁小白似乎看到了希望：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/76d77c4aac1b495eafe5d9f4ffabbff5~tplv-k3u1fbpfcp-watermark.image?" /><br />
+在buildkit0这个例子中，正好讲的就是LLB的使用方法，看起来好像是将dockerfile中一行行的指令用另一种形式组织起来，并且可以同时梳理出多个dockerfile之间的关联！</p>
+<h1 id="llb">LLB简单不简单</h1>
+<p>找到这个用例<code>examples/buildkit0/buildkit.go</code>之后，袁小白精神为之一振，试了运行了一下测试，可以跑通：<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2a4996d5ac3a456cbbfeb246260a333c~tplv-k3u1fbpfcp-watermark.image?" /><br />
+虽然从结果来看，好像没有太多信息，但这说明可以借助一些日志信息帮助理解，信心也就变得更足了。</p>
+<h2 id="main">main</h2>
+<pre class="golang"><code>func main() {
+   var opt buildOpt
+   flag.BoolVar(&amp;opt.withContainerd, &quot;with-containerd&quot;, true, &quot;enable containerd worker&quot;)
+   flag.StringVar(&amp;opt.containerd, &quot;containerd&quot;, &quot;v1.2.9&quot;, &quot;containerd version&quot;)
+   flag.StringVar(&amp;opt.runc, &quot;runc&quot;, &quot;v1.0.0-rc8&quot;, &quot;runc version&quot;)
+   flag.Parse()
+
+   bk := buildkit(opt)
+   out := bk.Run(llb.Shlex(&quot;ls -l /bin&quot;)) // debug output
+
+   dt, err := out.Marshal(context.TODO(), llb.LinuxAmd64)
+   if err != nil {
+      panic(err)
+   }
+   llb.WriteTo(dt, os.Stdout)
+}</code></pre>
+<ul>
+<li>首先设置参数，有布尔类型和字符类型，用来说明用不用<code>containerd</code>以及<code>containerd</code>和<code>runc</code>的版本信息。据袁小白所知，containerd是CNCF提供的容器运行管理工具，而runc则是容器运行时工具。</li>
+<li>用配置选项opt初始化buildkit。</li>
+<li>接着用初始化好的buildkit运行脚本命令<code>ls -l /bin</code>，列出所有在/bin目录下的文件</li>
+<li>以linux操作系统，amd64架构标准，整顿Marshal整个数据结构，并生成dt(Definition)</li>
+<li>最后将结果输出到标准输出os.Stdout</li>
+</ul>
+<h2 id="gobuildbase">goBuildBase</h2>
+<p><code>buildkit</code>方法，依赖于goBuildBase，用来创建src，也就是源镜像</p>
+<pre class="golang"><code>func goBuildBase() llb.State {
+   goAlpine := llb.Image(&quot;docker.io/library/golang:1.17-alpine&quot;)
+   return goAlpine.
+      AddEnv(&quot;PATH&quot;, &quot;/usr/local/go/bin:&quot;+system.DefaultPathEnvUnix).
+      AddEnv(&quot;GOPATH&quot;, &quot;/go&quot;).
+      Run(llb.Shlex(&quot;apk add --no-cache g++ linux-headers&quot;)).
+      Run(llb.Shlex(&quot;apk add --no-cache git libseccomp-dev make&quot;)).Root()
+}</code></pre>
+<ul>
+<li>llb.Image创建goAlpine，创建一个镜像实例，并指明ref索引</li>
+<li>在goAlpine镜像基础上，添加环境变量，及运行命令行安装相关的依赖<br />
+可以理解为创建一个设置好环境的golang基础容器</li>
+</ul>
+<h2 id="copy">copy</h2>
+<p><code>buildkit</code>里，相对复杂的操作就是copy操作：</p>
+<pre class="golang"><code>func copy(src llb.State, srcPath string, dest llb.State, destPath string) llb.State {
+   cpImage := llb.Image(&quot;docker.io/library/alpine:latest&quot;)
+   cp := cpImage.Run(llb.Shlexf(&quot;cp -a /src%s /dest%s&quot;, srcPath, destPath))
+   cp.AddMount(&quot;/src&quot;, src)
+   return cp.AddMount(&quot;/dest&quot;, dest)
+}</code></pre>
+<ul>
+<li>创建一个专门用来拷贝的基础镜像，完全不用安装什么依赖</li>
+<li>运行操作，将源目录下的文件都拷贝到目标目录</li>
+<li>挂载源目录</li>
+<li>挂载目录目录，并返回挂载结果<br />
+入参里除了srcPath, destPath外，还有src, dest，并且都是llb.State类型，说明copy操作可以在llb.State级别进行操作，假设src, dest不属于同一个镜像，那就意味着，我们可以用llb.State来表明不同镜像间的操作关系，那这将是现在的dockerfile做不到的。<br />
+看到这里，袁小白突然进一步理解了，buildkit的定位 - 未来的镜像构建工具。</li>
+</ul>
+<h2 id="runc">runc</h2>
+<p>在看<code>buildkit</code>前，最后来看看其中的一个操作<code>runc</code>:</p>
+<pre class="golang"><code>func runc(version string) llb.State {
+   return goBuildBase().
+      Run(llb.Shlex(&quot;git clone https://github.com/opencontainers/runc.git /go/src/github.com/opencontainers/runc&quot;)).
+      Dir(&quot;/go/src/github.com/opencontainers/runc&quot;).
+      Run(llb.Shlexf(&quot;git checkout -q %s&quot;, version)).
+      Run(llb.Shlex(&quot;go build -o /usr/bin/runc ./&quot;)).Root()
+}</code></pre>
+<p>和上面的类似，基于golang基础镜像，下载runc源码，进入源码目录，切换到指定版本，最后构建runc可运行二进制文件，并输出到./当前目录下，返回root目录llb.State</p>
+<h2 id="buildkit">buildkit</h2>
+<pre class="golang"><code>func buildkit(opt buildOpt) llb.State {
+   src := goBuildBase().
+      Run(llb.Shlex(&quot;git clone https://github.com/moby/buildkit.git /go/src/github.com/moby/buildkit&quot;)).
+      Dir(&quot;/go/src/github.com/moby/buildkit&quot;)
+
+   buildkitdOCIWorkerOnly := src.
+      Run(llb.Shlex(&quot;go build -o /bin/buildkitd.oci_only -tags no_containerd_worker ./cmd/buildkitd&quot;))
+
+   buildkitd := src.
+      Run(llb.Shlex(&quot;go build -o /bin/buildkitd ./cmd/buildkitd&quot;))
+
+   buildctl := src.
+      Run(llb.Shlex(&quot;go build -o /bin/buildctl ./cmd/buildctl&quot;))
+
+   r := llb.Image(&quot;docker.io/library/alpine:latest&quot;)
+   r = copy(buildctl.Root(), &quot;/bin/buildctl&quot;, r, &quot;/bin/&quot;)
+   r = copy(runc(opt.runc), &quot;/usr/bin/runc&quot;, r, &quot;/bin/&quot;)
+   if opt.withContainerd {
+     ...
+   } else {
+      r = copy(buildkitdOCIWorkerOnly.Root(), &quot;/bin/buildkitd.oci_only&quot;, r, &quot;/bin/&quot;)
+   }
+   return r
+}</code></pre>
+<ul>
+<li>创建buildkit源golang环境镜像，<code>git clone</code>buildkit源码，并进入到源码目录</li>
+<li>基于源构建buildkitd.oci_only二进制文件</li>
+<li>基于源构建buildkitd二进制文件</li>
+<li>基于源构建buildctl二进制文件</li>
+<li>创建一个空的镜像</li>
+<li>将buildctl二进制文件，从上面拷贝到这个新创建的镜像/bin/目录下</li>
+<li>将runc二进制文件，从上面拷贝到/bin目录下</li>
+<li>假设我们没有设置containerd，那接下来的操作就是将buildkitd.oci_only二进制文件，拷贝到/bin目录下</li>
+</ul>
+<p>那最后当我们进行<code>ls -l /bin</code>脚本时，显示的结果里就有buildctl, runc, buildkitd.oci_only这三个文件了。</p>
+<p>可是从最上面的输出来看，好像并不是运行完后的结果，更像是中间过程，也就是Definition。<br />
+整体来看，我可以用一个镜像来构建buildkit全家桶 - buildctl, buildkitd, buildkitd.oci_only。<br />
+然后用一个镜像来准备runc命令行工具。<br />
+并用一个全新的镜像来执行copy操作。<br />
+最后用一个干净的镜像来持有所有创建好的工具。</p>
+<p>这下袁小白的好奇心算是彻底地被勾了起来：</p>
+<ul>
+<li>LLB是怎么把这些构建关系给组织起来的呢？</li>
+<li>llb.State是怎么工作的呢？</li>
+<li>如果只是中间状态，那这个Definition和llb.State的关系又是什么呢？Definition是最终状态吗？</li>
+<li>这里面有一些步骤可以同时运行，那如何高效的执行这些操作，和理清这些依赖呢？</li>
+</ul>
+<p>袁小白越想越兴奋 - LLB用起来还挺简单的，一看就明白，可实现起来，好像还真不简单！</p>
+<h1 id="llb.state">神奇的llb.State</h1>
+<p>回想起因为dockerfile.Build里如何使用llb的场景：<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/465473c9878c45b78a4fbed4d88efabf~tplv-k3u1fbpfcp-watermark.image?" /><br />
+袁小白想着，对llb有了大概的理解后，如何找到一个难度适宜的例子，对llb.State进行学习呢。</p>
+<p>经过一番查找，真是黄天不负有心人，还真就找到了：<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/b33b0a738f9c4b398d39891efbf71e26~tplv-k3u1fbpfcp-watermark.image?" /><br />
+从名字上来看，这个测试用例测试的场景是默认平台。<br />
+通过<code>s := llb.Image(&quot;foo&quot;).Run(llb.Shlex(&quot;bar&quot;))</code>组装好构建语言，基于image - &quot;foo&quot;，运行脚本&quot;bar&quot;，然后对状态进行整治<code>s.Marshal</code>，还记得这里是可以传入默认平台的，目前是缺省，那就是用的默认平台；接着用<code>llbsolver.Load</code>来加载，这个好像是第一次出现，并且返回的类型是solver.Edge，这个类型也是第一次出现，那这个类型和之前的Definition, State又有什么关系呢？最后对比了一下默认平台和拼装的image id。</p>
+<p>为了弄清楚在整个过程中，llb.State到底起到了什么样的作用，是如何将这些状态都关联起来的。<br />
+袁小白准备从最关键的一句开始：</p>
+<pre class="golang"><code>s := llb.Image(&quot;foo&quot;).Run(llb.Shlex(&quot;bar&quot;))</code></pre>
+<p>经过一番挣扎，耗时好几个晚上的时间，终于把关系给梳理了出来：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/606d8ed87b0c444a8c0571bacfff0210~tplv-k3u1fbpfcp-watermark.image?" /><br />
+从图中也可以看出，实例间的关联结构确实有点绕。</p>
+<ul>
+<li>前半句<code>llb.Image(&quot;foo&quot;)</code>，创建了一个SourceOp，也就是源操作</li>
+<li>后半句<code>.Run(llb.shlex(&quot;bar&quot;))</code>，创建了一个ExecOp，执行操作</li>
+<li>每一个Op的结构里都需要实现Output()接口，也可以理解为每一个操作都需要一个执行结果，这里的SourceOp的output对象里包含了一个Vertex，并指向SourceOp自己，这里就不好理解，这个SoruceOp和output到底是个什么关系，分别有什么侧重。同样在ExecOp里，也实现了Output接口，但这里对应的属性是root，袁步白猜想这是因为这个执行操作需要依赖根文件系统的缘故，后面可以进一步验证，和SourceOp一样，也有一个output，并指向自己的Vertex。这个频繁出现的Vertex又是什么？</li>
+<li>最绕的还属于这个State结构体</li>
+<li>前半句创建S1(State)的过程如图所示，指名了output</li>
+<li>并在S1的基础上分别执行了Dir(&quot;/&quot;)操作，但这里并没有生成新的State，而是withValuer操作生成了S2，S2的prev属性链接了S1</li>
+<li>而后半句，并没有直接生成S3，而是先生成es1(ExecState)，原来对应不同的Op还有不同的State，但为了和之前的State关联上，实际上es1有对应的S3，这里的操作和S2一样，有指向自己的State，和前一个结点S2</li>
+</ul>
+<p>这样梳理下来，确实清晰了不少，但整体的感觉还是很模糊。<br />
+为了再找到一些线索，袁小白决定从源码的角度再梳理总结一遍，看能不能得到一些启发。</p>
+<h1 id="llb.state">神奇llb.State之代码实现</h1>
+<p>为了更好的理解作者的意图，袁小白决定把看过的代码，结合状态图再梳理一遍：<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8353d76fe0124e0caf506d18b5978708~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<h2 id="llb.imagefoo">llb.Image(&quot;foo&quot;)</h2>
+<p>因为我们只是传入了一个image ref，并没有其它的任何参数，代码可以简化为：</p>
+<pre class="golang"><code>func Image(ref string, opts ...ImageOption) State {
+   r, err := reference.ParseNormalizedNamed(ref)
+   ...
+   src := NewSource(&quot;docker-image://&quot;+ref, attrs, info.Constraints)
+   ...
+   return NewState(src.Output())</code></pre>
+<p>从代码中，可以看出主流程做了三件事，一是将传入的<code>ref</code>进行解析，这里的<code>reference.ParseNormalizedNamed</code>方法，来自于docker:<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/c1b62fa9f8014cc7baeff4be58bfd701~tplv-k3u1fbpfcp-watermark.image?" /><br />
+二是新建了Source：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/b8dff713b6f94603bbc68e042b21cdda~tplv-k3u1fbpfcp-watermark.image?" /><br />
+这里出现了SourceOp，其中包含了它的output，就像我们最开始的状态图所示：<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/98df32929f3a481685fbcc7104ea8e0c~tplv-k3u1fbpfcp-watermark.image?" /><br />
+三是用src.Output() - s.output创建了新状态并返回，也就是说这里才是State被创建的地方。</p>
+<pre class="golang"><code>func NewState(o Output) State {
+   s := State{
+      out: o,
+   }.Dir(&quot;/&quot;)
+   s = s.ensurePlatform()
+   return s
+}</code></pre>
+<p>NewState代码很简单，就是将output包成了一个State，但值得回味的是这里的<code>Dir(&quot;/&quot;)</code>，代码如下：</p>
+<pre class="golang"><code>func (s State) Dir(str string) State {
+   return Dir(str)(s)
+}
+func Dir(str string) StateOption {
+   return dirf(str, false)
+}
+func dirf(value string, replace bool, v ...interface{}) StateOption {
+   if replace {
+      value = fmt.Sprintf(value, v...)
+   }
+   return func(s State) State {
+      return s.withValue(keyDir, func(ctx context.Context, c *Constraints) (interface{}, error) {
+         if !path.IsAbs(value) {
+            prev, err := getDir(s)(ctx, c)
+            if err != nil {
+               return nil, err
+            }
+            if prev == &quot;&quot; {
+               prev = &quot;/&quot;
+            }
+            value = path.Join(prev, value)
+         }
+         return value, nil
+      })
+   }
+}</code></pre>
+<p>可以看出，进行了一连串的调用！<br />
+如果从结果来看，最后dirf函数返回的是一个func，这个方法入参是一个State，返回一个新的State，也就是传入了我们将我们SourceOp.output包成的第一个state传入，经过s.withValue处理，返回另一个新的State，为什么要这样设计呢？<br />
+从函数名<code>dirf</code>-dir format可以看出，这里需要处理的场景是动态目录，也就是Dir(&quot;/%s&quot;)等这样的format。<br />
+再看s.withValue:</p>
+<pre class="golang"><code>func (s State) withValue(k interface{}, v func(context.Context, *Constraints) (interface{}, error)) State {
+   return State{
+      out:   s.Output(),
+      prev:  &amp;s, // doesn&#39;t need to be original pointer
+      key:   k,
+      value: v,
+   }
+}</code></pre>
+<p> 创建了一个新的State，并将前一个的output设置为自己的output，将前一个State设置为自己的pref结点。<br />
+而value: v中的v是一个函数：<br />
+<code>golang func(ctx context.Context, c *Constraints) (interface{}, error) {    if !path.IsAbs(value) {       prev, err := getDir(s)(ctx, c)       if err != nil {          return nil, err       }       if prev == &quot;&quot; {          prev = &quot;/&quot;       }       value = path.Join(prev, value)    }    return value, nil }</code><br />
+这里可以看出这个方法会接收一些Constraints，也就是说在最后执行的时候，还会有机会根据不同的限制得出不同的结果，做到动态可配置。<br />
+而咱们的情况比较简单Dir(&quot;/&quot;)，是一个绝对路径，根据代码可看出，直接返回<code>return value, nil</code>。</p>
+<p>总的来看，State有以下几个特点：</p>
+<ul>
+<li>State是一个单向链表</li>
+<li>State并不是用来一一对应Op的</li>
+<li>每个State都有output</li>
+<li>每个State都是一个结点，有自己的key, value，并且value是可以接收Constraints的函数，可灵活处理不同的情况</li>
+</ul>
+<p>回到我们的状态图来看，也就来到了下面的状态：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/b653245fea5043f3a09ddd7b29253665~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<h3 id="runllb.shlexbar">.Run(llb.shlex(&quot;bar&quot;))</h3>
+<pre class="golang"><code>func (s State) Run(ro ...RunOption) ExecState {
+   ei := &amp;ExecInfo{State: s}
+   ...
+   exec := NewExecOp(ei.State, ei.ProxyEnv, ei.ReadonlyRootFS, ei.Constraints)
+   ...
+
+   return ExecState{
+      State: s.WithOutput(exec.Output()),
+      exec:  exec,
+   }
+}
+func NewExecOp(base State, proxyEnv *ProxyEnv, readOnly bool, c Constraints) *ExecOp {
+   e := &amp;ExecOp{base: base, constraints: c, proxyEnv: proxyEnv}
+   root := base.Output()
+   ...
+   e.mounts = append(e.mounts, rootMount)
+   if readOnly {
+      e.root = root
+   } else {
+      o := &amp;output{vertex: e, getIndex: e.getMountIndexFn(rootMount)}
+      ...
+      e.root = o
+   }
+   rootMount.output = e.root
+   return e
+}
+func (s State) WithOutput(o Output) State {
+   prev := s
+   s = State{
+      out:  o,
+      prev: &amp;prev,
+   }
+   s = s.ensurePlatform()
+   return s
+}</code></pre>
+<p>从<code>Run</code>函数可以看出，先创建出了ExecInfo，这里将会收集创建NewExecOp所需的参数信息，其中ReadonlyRootFS将永定ExecOp的output，也就是e.root的值，如果readOnly为true，就和上一个State一样，但这里我们走的流程是else，也就新创建了一个output，最后返回的是ExecState：<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/d199ab0f5c1d424eaf61448b7f5240ff~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>这样我们就走完了这个简单用例的全流程。<br />
+理解上好像是清楚了一点，那接着往下看：</p>
+<pre class="golang"><code>func TestDefaultPlatform(t *testing.T) {
+   t.Parallel()
+
+   s := llb.Image(&quot;foo&quot;).Run(llb.Shlex(&quot;bar&quot;))
+
+   def, err := s.Marshal(context.TODO())
+   require.NoError(t, err)
+
+   e, err := llbsolver.Load(def.ToPB())
+   require.NoError(t, err)
+
+   require.Equal(t, depth(e), 2)
+
+   // needs extra normalize for default spec
+   // https://github.com/moby/buildkit/pull/2427#issuecomment-952301867
+   expected := platforms.Normalize(platforms.DefaultSpec())
+
+   require.Equal(t, expected, platform(e))
+   require.Equal(t, []string{&quot;bar&quot;}, args(e))
+   e = parent(e, 0)
+   require.Equal(t, expected, platform(e))
+   require.Equal(t, &quot;docker-image://docker.io/library/foo:latest&quot;, id(e))
+}</code></pre>
+<p>其中<code>def, err := s.Marshal(context.TODO())</code>，又带来了另一个问题, def - Definition又是什么？</p>
+<h1 id="definition">Definition</h1>
+<p>袁小白听贾大智提到过，读文章可以沿着文章的主线来读。<br />
+代码也一样，也有自己的脉络，其中一种方法就是按数据的流向来理解源码。<br />
+到目前为止，从<code>buildctl build</code>来看，按顺序出现过的数据有dockerfile，llb.State，现在又有了Definition。<br />
+dockerfile如何读取并转化为llb.State，咱们可以回头再看。<br />
+llb.State的工作原理我们已经梳理过了。<br />
+现在这个Definition又要怎么理解呢？</p>
+<p>带着这样的问题，袁小白好奇的打开了源码，读了起来。</p>
+<pre class="golang"><code>func (s State) Marshal(ctx context.Context, co ...ConstraintsOpt) (*Definition, error) {
+   def := &amp;Definition{
+      Metadata: make(map[digest.Digest]pb.OpMetadata, 0),
+   }
+   ...
+}</code></pre>
+<p>函数一开始定义了一个空的Definition，看来数据都会被存在这里面。</p>
+<pre class="golang"><code>// Definition is the LLB definition structure with per-vertex metadata entries
+// Corresponds to the Definition structure defined in solver/pb.Definition.
+type Definition struct {
+   Def      [][]byte
+   Metadata map[digest.Digest]pb.OpMetadata
+   Source   *pb.Source
+}</code></pre>
+<p>Definition的结构体看起来也不复杂，只有三项，后面两项都是自定义的类型，且以pb开头，那这个pb又是什么呢？<br />
+原来这是<code>solver</code>下的pb，从<code>ops.proto</code>中可以看出，原来这就是google的<a href="https://developers.google.com/protocol-buffers/docs/proto3">Protocol Buffers</a>，看了下文档后，大概的意思说是用来传输数据用的，特点是压缩算法很高效，专为数据传输场景打造的语言。<br />
+那我们这里可以预见的就是，我们的Definition可能多少需要跨网传输到远端进行处理。</p>
+<p>再看下一句：</p>
+<pre class="golang"><code>func (s State) Marshal(ctx context.Context, co ...ConstraintsOpt) (*Definition, error) {
+   def := &amp;Definition{
+      Metadata: make(map[digest.Digest]pb.OpMetadata, 0),
+   }
+   ...
+   def, err := marshal(ctx, s.Output().Vertex(ctx, c), def, smc, map[digest.Digest]struct{}{}, map[Vertex]struct{}{}, c)
+   ...
+}</code></pre>
+<p>这里又来了个小写的marshal，从参数来看，第二个是s.Output().Vertex(...)，基于现在的理解，这个就是上次看到的ExecState，也就是第二部分。<br />
+def也传了进去，看来猜想的没错，确实是用来存储数据的。</p>
+<p>再看小marshal：</p>
+<pre class="golang"><code>func marshal(ctx context.Context, v Vertex, def *Definition, s *sourceMapCollector, cache map[digest.Digest]struct{}, vertexCache map[Vertex]struct{}, c *Constraints) (*Definition, error) {
+   if _, ok := vertexCache[v]; ok {
+      return def, nil
+   }
+   for _, inp := range v.Inputs() {
+      var err error
+      def, err = marshal(ctx, inp.Vertex(ctx, c), def, s, cache, vertexCache, c)
+      if err != nil {
+         return def, err
+      }
+   }
+
+   dgst, dt, opMeta, sls, err := v.Marshal(ctx, c)
+   if err != nil {
+      return def, err
+   }
+   vertexCache[v] = struct{}{}
+   if opMeta != nil {
+      def.Metadata[dgst] = mergeMetadata(def.Metadata[dgst], *opMeta)
+   }
+   if _, ok := cache[dgst]; ok {
+      return def, nil
+   }
+   s.Add(dgst, sls)
+   def.Def = append(def.Def, dt)
+   cache[dgst] = struct{}{}
+   return def, nil
+}</code></pre>
+<p>可以看出这里有一个递归调用小marshal，如果v.Inputs()不为空，那么就会触发递归：<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/a1c226e0b1d94fdba5194e63d8cabdd2~tplv-k3u1fbpfcp-watermark.image?" /><br />
+贾大智还说过，看递归，主要看两点，一个是抽象出递规函数要做的事情，也就是会重复被调用的动作，再就是看出口，也就是退出递归的地方。</p>
+<p>这里正好可以试验下这种方法：</p>
+<ul>
+<li>递归函数就是小marshal，主要是用来将Vertex整理成对应的Definition。</li>
+<li>出口就是v.Inputs()，也就是一直会找到没有Inputs的结点开始处理，那我们这里就是SourceOp，他是第一个Vertex，再没有input了。<br />
+会一直向上查找，找到最后没有依赖的结点，开始处理，似乎就是传说中的深度优先算法。</li>
+</ul>
+<p>那具体是如何转换的呢？<br />
+得到下一句：</p>
+<pre class="golang"><code>dgst, dt, opMeta, sls, err := v.Marshal(ctx, c)</code></pre>
+<p>这里的v，就是我们的Vertex，我们现在有SourcOp, ExecOp，我们来看看他们大Marshal是如何实现的.</p>
+<h2 id="sourceop-marshal">SourceOp Marshal()</h2>
+<pre class="golang"><code>func (s *SourceOp) Marshal(ctx context.Context, constraints *Constraints) (digest.Digest, []byte, *pb.OpMetadata, []*SourceLocation, error) {
+   if s.Cached(constraints) {
+      return s.Load()
+   }
+   if err := s.Validate(ctx, constraints); err != nil {
+      return &quot;&quot;, nil, nil, nil, err
+   }
+
+   if strings.HasPrefix(s.id, &quot;local://&quot;) {
+      if _, hasSession := s.attrs[pb.AttrLocalSessionID]; !hasSession {
+         uid := s.constraints.LocalUniqueID
+         if uid == &quot;&quot; {
+            uid = constraints.LocalUniqueID
+         }
+         s.attrs[pb.AttrLocalUniqueID] = uid
+         addCap(&amp;s.constraints, pb.CapSourceLocalUnique)
+      }
+   }
+   proto, md := MarshalConstraints(constraints, &amp;s.constraints)
+
+   proto.Op = &amp;pb.Op_Source{
+      Source: &amp;pb.SourceOp{Identifier: s.id, Attrs: s.attrs},
+   }
+
+   if !platformSpecificSource(s.id) {
+      proto.Platform = nil
+   }
+
+   dt, err := proto.Marshal()
+   if err != nil {
+      return &quot;&quot;, nil, nil, nil, err
+   }
+
+   s.Store(dt, md, s.constraints.SourceLocations, constraints)
+   return s.Load()
+}</code></pre>
+<p>可以看到<code>proto, md := MarshalConstraints(constraints, &amp;s.constraints)</code>生成了proto：</p>
+<pre class="golang"><code>return &amp;pb.Op{
+   Platform: &amp;pb.Platform{
+      OS:           c.Platform.OS,
+      Architecture: c.Platform.Architecture,
+      Variant:      c.Platform.Variant,
+      OSVersion:    c.Platform.OSVersion,
+      OSFeatures:   c.Platform.OSFeatures,
+   },
+   Constraints: &amp;pb.WorkerConstraints{
+      Filter: c.WorkerConstraints,
+   },
+}, &amp;c.Metadata</code></pre>
+<p>也就是在这里，从SourceOp转换成了pb.Op：</p>
+<pre class="golang"><code>proto.Op = &amp;pb.Op_Source{
+   Source: &amp;pb.SourceOp{Identifier: s.id, Attrs: s.attrs},
+}</code></pre>
+<h2 id="execop-marshal">ExecOp Marshal()</h2>
+<p>主流程和SourceOp类似，实际处理的流程要复杂一些，我们先专注在数据的转换上：</p>
+<pre class="golang"><code>func (e *ExecOp) Marshal(ctx context.Context, c *Constraints) (digest.Digest, []byte, *pb.OpMetadata, []*SourceLocation, error) {
+   ...
+   pop, md := MarshalConstraints(c, &amp;e.constraints)
+   pop.Op = &amp;pb.Op_Exec{
+      Exec: peo,
+   }
+   ...
+   </code></pre>
+<p>从整体来看，数据转换流程确实变得清楚了一些。<br />
+用深度优先递归组织好所有的Vertex，这里得感谢llb.State帮我们组织好了Vertex之间的关系。<br />
+然后每一个Op，也就是SourceOp和ExecOp，而且都提供了Marshal方法，真正做数据转换的地方，加上Proto Buffer的加持，具体的序列化操作并不需要我们操心。<br />
+这样我们就完成了llb.State到Definition的转换，其中所有的SourceOp, ExecOp临时Op，转换成了标准的pb.Op。</p>
+<p>感觉不错，袁小白高高兴兴的准备出门上班了 ：）</p>
+<h1 id="llb.state">llb.State活学活用，融汇贯通</h1>
+<p>袁小白开开心心的在例会上分享了关于llb.State和Definition的理解。<br />
+得到了龙飞和贾大智的一致好评。<br />
+能在短短的时间里掌握到关健的数据结构用法，确实是件了不起的事情。</p>
+<p>因为绝大多数情况下，大家宁愿自己写都不想看别人代码的原因就在于代码的复杂性。<br />
+本来觉得自己还挺优秀的，但一到看别人代码时，就会多少对之前的信心产生怀疑。<br />
+加上看不懂的时候还不少，就一次次将怀疑实锤了。<br />
+这当然是不好的体验。</p>
+<p>从实际的情况来看，读他人代码确实也存在挑战。<br />
+如果代码写的标准，纯粹，读起来简单易懂，这当然是好代码。<br />
+但同时这也是较高的要求，要求对设计模式、算法、数据结构、框架及编程范式等等都理解的很到位，这样写出来的东西都是一些程序员之间的共同语言，当然容易沟通一些。<br />
+但往往这种理想的状态不容易达到，加上很多时候，我们再把复杂的业务逻辑揉入其中，就更是难上加难了。</p>
+<p>贾大智对袁小白赞赏之余，也提了点建议。<br />
+那就是能不能用这些掌握了的知识，把之前<a href="https://juejin.cn/post/7030254598640107550">llb.State第一印象</a>中完整的例子，梳理一遍，既能验证理解的正确性，也顺便可以加深理解。</p>
+<p>话是这么说，袁小白不禁心里还是泛起了嘀咕：你怎么不去梳理啊。</p>
+<p>想归想，袁小白还是找机会，认真的看起了源码。</p>
+<h2 id="marshal">递归Marshal思想</h2>
+<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/60999377e2684b0daf3d975a65c12c23~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<h2>递归实例理解</h2>
+<p>基于对<code>examples/buildkit0/buildkit.go</code>实例的理解，加上理解到的递归思想，袁小白对用例进行了梳理：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/24c3fceca0a648c7a2eb0a5641ded178~tplv-k3u1fbpfcp-watermark.image?" /><br />
+从图中可以看出清晰的递归调用流程：</p>
+<ol>
+<li>基于构建好的llb.State链表，如果要进行Marshal，最先会从最后一个结点开始进行递归，但为例子中所有的操作都是SourceOp和ExecOp类型，所以都会有自己的Marshal方法。</li>
+<li>如果有多重依赖，会按顺序完成对应的递归，如图中步骤3, 9, 16都是SourceOp</li>
+<li>因为是深度优先算法，所以会将每一个依赖穷尽，处理完后再进行下一个依赖的处理，只有在都处理完后，才会处理真正的最后一步18.</li>
+</ol>
+<p>从结构上来看，像是一颗反过来的树。</p>
+<h2 id="llb.state">llb.State实例理解</h2>
+<p>如果要将准备好的State都转化成Definition，那对应的llb.State调用顺序又会长什么样呢：<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/c530f8ce3aec4b56942f8461922eebb9~tplv-k3u1fbpfcp-watermark.image?" /><br />
+通过梳理：</p>
+<ol>
+<li>可以看到起先是各自独立的State，如S1, S2, S3，也就是通过llb.Image创建的结果，这时他们互相并不知道对方的存在，并没有关联</li>
+<li>随着一步步的执行, e5将大家关联到了一起，因为拷贝操作要将src拷贝到dest，而ExecOp的会从Mount中获取位置信息，所以就将几个ExecState关联了起来</li>
+<li>最后执行我们的最终操作<code>ls -l /bin</code></li>
+</ol>
+<p>经过一番梳理，袁小白确实比以前更有信心了。<br />
+这也为后面的PoC打下了良好的基础。</p>
+<h1 id="edge">Edge</h1>
+<p>梳理完了数据三剑客中的State和Definition后，现在就差Edge了。<br />
+袁小白找回到代码之前读到的位置：<code>client/llb/llbtest/platform_test.go - TestDefaultPlatform</code>，正好看到了:</p>
+<pre class="golang"><code>e, err := llbsolver.Load(def.ToPB())</code></pre>
+<p>返回的结果正好是Edge。</p>
+<h2 id="def.topb">def.ToPB()</h2>
+<pre class="golang"><code>func (def *Definition) ToPB() *pb.Definition {
+   md := make(map[digest.Digest]pb.OpMetadata, len(def.Metadata))
+   for k, v := range def.Metadata {
+      md[k] = v
+   }
+   return &amp;pb.Definition{
+      Def:      def.Def,
+      Source:   def.Source,
+      Metadata: md,
+   }
+}</code></pre>
+<p>没有什么复杂的操作，就是将Definition转化为pb.Definition。<br />
+甚至有一点奇怪，因为这两个对象实在是太像了，简直就是一模一样。<br />
+那问题来了，为什么要创造两个而不是一个呢？<br />
+带着这个问题，袁小白继续看起了重点内容：<code>llbsolver.Load</code>。</p>
+<h2 id="load">Load</h2>
+<pre class="golang"><code>func Load(def *pb.Definition, opts ...LoadOpt) (solver.Edge, error) {
+   return loadLLB(def, func(dgst digest.Digest, pbOp *pb.Op, load func(digest.Digest) (solver.Vertex, error)) (solver.Vertex, error) {
+      opMetadata := def.Metadata[dgst]
+      vtx, err := newVertex(dgst, pbOp, &amp;opMetadata, load, opts...)
+      if err != nil {
+         return nil, err
+      }
+      return vtx, nil
+   })
+}</code></pre>
+<p>主要是接收pb.Definition，调用loadLLB函数。</p>
+<h2 id="loadllb">loadLLB</h2>
+<pre class="golang"><code>// loadLLB loads LLB.
+// fn is executed sequentially.
+func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Digest) (solver.Vertex, error)) (solver.Vertex, error)) (solver.Edge, error) {
+   if len(def.Def) == 0 {
+      return solver.Edge{}, errors.New(&quot;invalid empty definition&quot;)
+   }
+
+   allOps := make(map[digest.Digest]*pb.Op)
+
+   var dgst digest.Digest
+
+   for _, dt := range def.Def {
+      var op pb.Op
+      if err := (&amp;op).Unmarshal(dt); err != nil {
+         return solver.Edge{}, errors.Wrap(err, &quot;failed to parse llb proto op&quot;)
+      }
+      dgst = digest.FromBytes(dt)
+      allOps[dgst] = &amp;op
+   }
+
+   if len(allOps) &lt; 2 {
+      return solver.Edge{}, errors.Errorf(&quot;invalid LLB with %d vertexes&quot;, len(allOps))
+   }
+   ... 
+}</code></pre>
+<p>首先根据pb.Definition将def.Def转换成pb.Op，并存放在allOps中。</p>
+<pre class="golang"><code>// loadLLB loads LLB.
+// fn is executed sequentially.
+func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Digest) (solver.Vertex, error)) (solver.Vertex, error)) (solver.Edge, error) {
+   ...
+
+   lastOp := allOps[dgst]
+   delete(allOps, dgst)
+   if len(lastOp.Inputs) == 0 {
+      return solver.Edge{}, errors.Errorf(&quot;invalid LLB with no inputs on last vertex&quot;)
+   }
+   dgst = lastOp.Inputs[0].Digest
+
+   ...
+}</code></pre>
+<p>中间部分值得我们关系的是取出了最后一个Op - lastOp，的第一个Input依赖 - lastOp.Inputs[0].Digest。<br />
+这里要注意的是，在Definition中最后一个Op是用来辅助逻辑的，并没有和真正的Op对应上，就像树状结构的根，而Inputs[0]再是真正意义上最后的一个Op，可以参考Definition代码：</p>
+<pre class="golang"><code>func (s State) Marshal(ctx context.Context, co ...ConstraintsOpt) (*Definition, error) {
+   ...
+
+   def, err := marshal(ctx, s.Output().Vertex(ctx, c), def, smc, map[digest.Digest]struct{}{}, map[Vertex]struct{}{}, c)
+   if err != nil {
+      return def, err
+   }
+   inp, err := s.Output().ToInput(ctx, c)
+   if err != nil {
+      return def, err
+   }
+   proto := &amp;pb.Op{Inputs: []*pb.Input{inp}}
+   dt, err := proto.Marshal()
+   if err != nil {
+      return def, err
+   }
+   def.Def = append(def.Def, dt)
+   ...
+}</code></pre>
+<p>上面所指，就是<code>proto := &amp;pb.Op{Inputs: []*pb.Input{inp}}</code>，最后创建了一个新的pb.Op，但实际上并没有设置其它属性，只有Inputs。</p>
+<p>再接着看<code>loadLLB</code>：</p>
+<pre class="golang"><code>// loadLLB loads LLB.
+// fn is executed sequentially.
+func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Digest) (solver.Vertex, error)) (solver.Vertex, error)) (solver.Edge, error) {
+   ...
+
+   cache := make(map[digest.Digest]solver.Vertex)
+
+   var rec func(dgst digest.Digest) (solver.Vertex, error)
+   rec = func(dgst digest.Digest) (solver.Vertex, error) {
+      if v, ok := cache[dgst]; ok {
+         return v, nil
+      }
+      op, ok := allOps[dgst]
+      if !ok {
+         return nil, errors.Errorf(&quot;invalid missing input digest %s&quot;, dgst)
+      }
+
+      if err := ValidateOp(op); err != nil {
+         return nil, err
+      }
+
+      v, err := fn(dgst, op, rec)
+      if err != nil {
+         return nil, err
+      }
+      cache[dgst] = v
+      return v, nil
+   }
+
+   v, err := rec(dgst)
+   if err != nil {
+      return solver.Edge{}, err
+   }
+   return solver.Edge{Vertex: v, Index: solver.Index(lastOp.Inputs[0].Index)}, nil
+}</code></pre>
+<p>最后用内嵌的函数<code>rec</code>，调用传入的<code>fn</code>，并且将自己作为了参数传入，fn就是上面传入的：</p>
+<pre class="golang"><code>func(dgst digest.Digest, pbOp *pb.Op, load func(digest.Digest) (solver.Vertex, error)) (solver.Vertex, error) {
+   opMetadata := def.Metadata[dgst]
+   vtx, err := newVertex(dgst, pbOp, &amp;opMetadata, load, opts...)
+   if err != nil {
+      return nil, err
+   }
+   return vtx, nil
+}</code></pre>
+<p>可以看出，这个函数，就是传入newVertex调用所需的上下文。</p>
+<h2 id="newvertex">newVertex</h2>
+<pre class="golang"><code>func newVertex(dgst digest.Digest, op *pb.Op, opMeta *pb.OpMetadata, load func(digest.Digest) (solver.Vertex, error), opts ...LoadOpt) (*vertex, error) {
+   opt := solver.VertexOptions{}
+   if opMeta != nil {
+      opt.IgnoreCache = opMeta.IgnoreCache
+      opt.Description = opMeta.Description
+      if opMeta.ExportCache != nil {
+         opt.ExportCache = &amp;opMeta.ExportCache.Value
+      }
+   }
+   for _, fn := range opts {
+      if err := fn(op, opMeta, &amp;opt); err != nil {
+         return nil, err
+      }
+   }
+
+   vtx := &amp;vertex{sys: op, options: opt, digest: dgst, name: llbOpName(op)}
+   for _, in := range op.Inputs {
+      sub, err := load(in.Digest)
+      if err != nil {
+         return nil, err
+      }
+      vtx.inputs = append(vtx.inputs, solver.Edge{Index: solver.Index(in.Index), Vertex: sub})
+   }
+   return vtx, nil
+}</code></pre>
+<p>主要目的就是创建vertex，但值得注意的是在op.Inputs的循环中，又调用了传入的<code>load()</code>，这个load就是上面的<code>rec</code>。</p>
+<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/98345502f78a427298b8288695e25b4c~tplv-k3u1fbpfcp-watermark.image?" /><br />
+没错，这里又出现了递归。<br />
+像之前理解递归一样，我们需要关注两点：</p>
+<ul>
+<li>递归函数的目的就是创建vertex</li>
+<li>递归出口就是没有input的op，也就是我们的SourceOp</li>
+</ul>
+<pre class="golang"><code>// loadLLB loads LLB.
+// fn is executed sequentially.
+func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Digest) (solver.Vertex, error)) (solver.Vertex, error)) (solver.Edge, error) {
+   ...
+   v, err := rec(dgst)
+   if err != nil {
+      return solver.Edge{}, err
+   }
+   return solver.Edge{Vertex: v, Index: solver.Index(lastOp.Inputs[0].Index)}, nil
+}</code></pre>
+<p>得到rec返回的v-vertex后，我们返回了solver.Edge，可以看出，这个Edge只是一个连接点，是Vertex的补充说明。</p>
+<p>终于，集齐了State, Definition, Edge。<br />
+那么，是否到了召唤神龙的时刻了呢？<br />
+袁小白成就感满满的吸了口气。</p>
+<h1>我从哪儿来？到哪儿去？</h1>
+<p>梳理完State - Definition - Edge，已经过去将近一个月了。<br />
+袁小白感觉实现纯手工打造，24K容器化运行生态，是越来越有信心了！</p>
+<p>可话说回来。<br />
+我们看到哪儿了？<br />
+为什么在看这三个数据结构？<br />
+接下来要看啥？<br />
+袁小白突然感觉面临着人生三大终级问题。</p>
+<p>好在按<code>buildctl build</code>全流程回顾后，发现，我们正在看Frontend，看到了dockerfile.Build，因为这个函数很长，长达近500行，发现关键地方出现了llb.State，为了搞清楚llb.State到底做了什么，所以转而去了解数据结构去了，现在好容易看完，再回过头来看看之前我们到达的地方：</p>
+<pre class="golang"><code>func Build(ctx context.Context, c client.Client) (*client.Result, error) {
+   ...
+   res := client.NewResult()
+   ...
+    for i, tp := range targetPlatforms {
+       func(i int, tp *ocispecs.Platform) {
+          ...
+          st, img, err := dockerfile2llb.Dockerfile2LLB(...)
+          ...
+       }
+       ...
+       def, err := st.Marshal(ctx)
+       ...
+       r, err := c.Solve(ctx, client.SolveRequest{
+          Definition:   def.ToPB(),
+          CacheImports: cacheImports,
+       })
+       ...
+       ref, err := r.SingleRef()
+       ...
+          res.SetRef(ref)
+       ...
+    }
+    ...
+    return res, nil
+}</code></pre>
+<p>再回过头来看这一段代码，袁小白感觉一目了然，神清气爽，这感觉就像是被打通了任督二脉。</p>
+<ul>
+<li>通过dockerfile2llb.Dockerfile2LLB方法，将dockerfile转换成State</li>
+<li>然后将返回的State - st.Marshal转换成def - Definition</li>
+<li>再重新解析一次c.Solve，这里的c - client也就是传入的llbBridge；并传入def.ToPB()</li>
+<li>最后得到解析结果，并返回</li>
+</ul>
+<p>数据结构是没太大的问题了，帮助我们理解起这小500行的代码，变得轻松了起来。<br />
+可这晨为什么要又调用一次llbBridge解析一遍呢？<br />
+在前面的理解是，这里传入的参数和第一次解析传入的参数不一样，所以结果不一样，再看看解析源码：</p>
+<pre class="golang"><code>func (b *llbBridge) Solve(ctx context.Context, req frontend.SolveRequest, sid string) (res *frontend.Result, err error) {
+   if req.Definition != nil &amp;&amp; req.Definition.Def != nil &amp;&amp; req.Frontend != &quot;&quot; {
+      return nil, errors.New(&quot;cannot solve with both Definition and Frontend specified&quot;)
+   }
+
+   if req.Definition != nil &amp;&amp; req.Definition.Def != nil {
+      res = &amp;frontend.Result{Ref: newResultProxy(b, req)}
+      if req.Evaluate {
+         _, err := res.Ref.Result(ctx)
+         return res, err
+      }
+   } else if req.Frontend != &quot;&quot; {
+      f, ok := b.frontends[req.Frontend]
+      if !ok {
+         return nil, errors.Errorf(&quot;invalid frontend: %s&quot;, req.Frontend)
+      }
+      res, err = f.Solve(ctx, b, req.FrontendOpt, req.FrontendInputs, sid, b.sm)
+      if err != nil {
+         return nil, err
+      }
+   } else {
+      return &amp;frontend.Result{}, nil
+   }
+
+   return
+}</code></pre>
+<p>果然，同样的解析，这里有两个分支，一个是当req.Definitoin不为空时，一个是req.Frontend不为空时，前面一次是因为req.Frontend传入的是dockerfile.v0，是从<code>buildctl build</code>命令行参数里读取的。<br />
+而这一次是由Frontend dockerfile.Build方法，主动发起的调用，传入的req.Definition不为空。</p>
+<p>那就对上了，那最终返回的结果res就是<code>res = &amp;frontend.Result{Ref: newResultProxy(b, req)}</code>。<br />
+也就是说绕了一圈后，最终返回的结果是bridge.go里的Result。</p>
+<p>真是把自己牛X坏了...</p>
+<p>再看龙飞的时序图，真是不得不佩服，接下来就看真正的Build了。</p>
+<h1 id="build">是时候开始Build了</h1>
+<p>为了加强自己的理解，袁小白像以往一样，梳理了下流程图：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/c0d1efa8143e4aa08644e088c1682e82~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<ol>
+<li>solver接受到请求后，在Solve方法中调用Bridge的Solve方法，开始解析</li>
+<li>在bridge中调用Frontend进行解析，这里的Frontend就是dockerfile</li>
+<li>在dockerfile Frontend中，又调用了bridge的Solve方法，这一次和第一步不一样的地方在于传入的参数，这一次是传入了已经解析好的Definition</li>
+<li>创建代理结果，因为这个时候并没有得到真正的构建结果，只是把中间所需要的对象都组织好，比如这里准备的实际上是frontend.Result.Ref</li>
+<li>准备好newResultProxy，返回第一步Solve的结果res</li>
+<li>得到Frontend Solve的结果res后，加载代理结果的Result</li>
+<li>实际调用的是创建代码结果的回调函数pr.cb - proxyResult.callBack</li>
+<li>代理结果中实际请求的是llbBridge.loadResult</li>
+<li>loadResult中先调用的是Load，注意，这里的Load和我们之前见到的一样，是将Definition转换为Edge。这里Edge第一次出现了</li>
+<li>真正的Build开始了，而且出现了一个新的文件 - jobs.go</li>
+</ol>
+<p>源码是：</p>
+<pre class="golang"><code>res, bi, err := b.builder.Build(ctx, edge)</code></pre>
+<p>b就是llbBridge实例，那b.builder是什么呢？<br />
+从上面流程图中可以知道，在第一步时，solver的Solve方法中，调用了Bridge的Solve：</p>
+<pre class="golang"><code>res, err = s.Bridge(j).Solve(ctx, req, sessionID)</code></pre>
+<p>这里是bridge实例化的地方：</p>
+<pre class="golang"><code>func (s *Solver) Bridge(b solver.Builder) frontend.FrontendLLBBridge {
+   return &amp;llbBridge{
+      builder:                   b,
+      frontends:                 s.frontends,
+      resolveWorker:             s.resolveWorker,
+      eachWorker:                s.eachWorker,
+      resolveCacheImporterFuncs: s.resolveCacheImporterFuncs,
+      cms:                       map[string]solver.CacheManager{},
+      sm:                        s.sm,
+   }
+}</code></pre>
+<p>传入的参数就是就是builder，再看这个<code>j</code>：</p>
+<pre class="golang"><code>j, err := s.solver.NewJob(id)</code></pre>
+<p>再继续展开：</p>
+<pre class="golang"><code>func (jl *Solver) NewJob(id string) (*Job, error) {
+   jl.mu.Lock()
+   defer jl.mu.Unlock()
+
+   if _, ok := jl.jobs[id]; ok {
+      return nil, errors.Errorf(&quot;job ID %s exists&quot;, id)
+   }
+
+   pr, ctx, progressCloser := progress.NewContext(context.Background())
+   pw, _, _ := progress.NewFromContext(ctx) // TODO: expose progress.Pipe()
+
+   _, span := trace.NewNoopTracerProvider().Tracer(&quot;&quot;).Start(ctx, &quot;&quot;)
+   j := &amp;Job{
+      list:           jl,
+      pr:             progress.NewMultiReader(pr),
+      pw:             pw,
+      progressCloser: progressCloser,
+      span:           span,
+      id:             id,
+   }
+   jl.jobs[id] = j
+
+   jl.updateCond.Broadcast()
+
+   return j, nil
+}</code></pre>
+<p>可以看到，这里有一个list，用来存储新创建的job，返回的j中有对应的list引用。<br />
+在返回前我们还看到了<code>jl.updateCond.Broadcast()</code>，应该是向组内其它job进行广播，有新成员加入了。</p>
+<p>绕了一圈回来，我们找到了真正Build开始的地方 - jobs.Build：</p>
+<pre class="golang"><code>func (j *Job) Build(ctx context.Context, e Edge) (CachedResult, BuildInfo, error) {
+   if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+      j.span = span
+   }
+
+   v, err := j.list.load(e.Vertex, nil, j)
+   if err != nil {
+      return nil, nil, err
+   }
+   e.Vertex = v
+
+   res, err := j.list.s.build(ctx, e)
+   if err != nil {
+      return nil, nil, err
+   }
+
+   j.list.mu.Lock()
+   defer j.list.mu.Unlock()
+   return res, j.walkBuildInfo(ctx, e, make(BuildInfo)), nil
+}</code></pre>
+<p>其中有两句吸引了袁小白的注意：</p>
+<ul>
+<li>j.list.load</li>
+<li>j.list.s.build</li>
+</ul>
+<p>不知道要用什么样的姿势，才能正确打开jobs的load和s.build</p>
+<h1 id="jobs">jobs的世界</h1>
+<p>从龙飞给出的<code>buildctl build</code>全景时序图中可以了解到：<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/51099b46c225455bb179d77a97543341~tplv-k3u1fbpfcp-watermark.image?" /><br />
+Worker是用来真正运行容器的，那jobs的定位又是什么呢？</p>
+<p>带着这个问题，袁小白打开了<code>j.list.load(e.Vertex, nil, j)</code>，稍早之前有看到初始化Job的时候，j.list指的是jobs.go中的Solver，所以j.list.load就是：</p>
+<pre class="golang"><code>func (jl *Solver) load(v, parent Vertex, j *Job) (Vertex, error) {
+   jl.mu.Lock()
+   defer jl.mu.Unlock()
+
+   cache := map[Vertex]Vertex{}
+
+   return jl.loadUnlocked(v, parent, j, cache)
+}</code></pre>
+<p>这里传入的的参数有v, parent都是Vertex，其中v就是edge.Vertex，从函数的定义来看，传入了vertex，返回的也是vertex，看起来像是对vertext做了一些处理，代码中实际调用的是jl.loadUnlocked：</p>
+<pre class="golang"><code>func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex) (Vertex, error) {
+   if v, ok := cache[v]; ok {
+      return v, nil
+   }
+   
+   ...
+}</code></pre>
+<p>直接从传入的Cache map中取vertex，如果有直接返回，那我们可以看出这里的cache是指的正在处理的Edge中的Vertex。</p>
+<pre class="golang"><code>func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex) (Vertex, error) {
+   ...
+
+   inputs := make([]Edge, len(v.Inputs()))
+   for i, e := range v.Inputs() {
+      v, err := jl.loadUnlocked(e.Vertex, parent, j, cache)
+      if err != nil {
+         return nil, err
+      }
+      inputs[i] = Edge{Index: e.Index, Vertex: v}
+   }
+   ...
+}</code></pre>
+<p>这里又出现了递归，而且是根据vertex的input，循环load处于unlock状态的vertex，值得注意的是这里用的parent是同一个，并不是上一级的Vertex。<br />
+可以看出每一级只关心自己的这一级的input。</p>
+<pre class="golang"><code>func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex) (Vertex, error) {
+   ...
+   // if same vertex is already loaded without cache just use that
+   st, ok := jl.actives[dgstWithoutCache]
+
+   if !ok {
+     ...
+
+      v = &amp;vertexWithCacheOptions{
+         Vertex: v,
+         dgst:   dgst,
+         inputs: inputs,
+      }
+      ...
+   }
+    if !ok {
+       st = &amp;state{
+          opts:         jl.opts,
+          jobs:         map[*Job]struct{}{},
+          parents:      map[digest.Digest]struct{}{},
+          childVtx:     map[digest.Digest]struct{}{},
+          allPw:        map[progress.Writer]struct{}{},
+          mpw:          progress.NewMultiWriter(progress.WithMetadata(&quot;vertex&quot;, dgst)),
+          mspan:        tracing.NewMultiSpan(),
+          vtx:          v,
+          clientVertex: initClientVertex(v),
+          edges:        map[Index]*edge{},
+          index:        jl.index,
+          mainCache:    jl.opts.DefaultCache,
+          cache:        map[string]CacheManager{},
+          solver:       jl,
+          origDigest:   origVtx.Digest(),
+       }
+       jl.actives[dgst] = st
+    }
+   ...
+}</code></pre>
+<p>这里的重点是将vertex转换成vertexWithCacheOptions，也就是适用于缓存的状态。<br />
+紧接着创建出了state，这里的state，从结构体数据项来看是综合了所有的job相关的信息。</p>
+<p>总的来说，就是将所有的vertex转换成有cacheOptions的状态，并用dgst(vertext唯一标识)关联上对应的state。</p>
+<p>再看Build:</p>
+<pre class="golang"><code>func (j *Job) Build(ctx context.Context, e Edge) (CachedResult, BuildInfo, error) {
+   ...
+   v, err := j.list.load(e.Vertex, nil, j)
+   ...
+   e.Vertex = v
+
+   res, err := j.list.s.build(ctx, e)
+   ...
+   return res, j.walkBuildInfo(ctx, e, make(BuildInfo)), nil
+}</code></pre>
+<p>将vertex转换成有cacheOptions状态的vertext后，替换掉了原Vertex - <code>e.Vertex = v</code>。<br />
+最后用j.list.s.build进行构建。</p>
+<p><code>j.list.s</code>指的是scheduler调度器，看来每个job都有自己的一个高度器，而这个调度器需要有缓存信息的vertex进行构建。</p>
+<p>袁小白感觉自己正准备进入buildctl build中的引擎部位，前面那么多的铺垫都是在为这一刻做准备，紧张又兴奋！</p>
+<h1 id="jobs-scheduler">jobs scheduler</h1>
+<p>果然不出袁小白所料，这scheduler还真不简单 - 因为没看懂，自己琢磨了一个星期，愣是没弄明白调度器是scheduler是怎么调度的。</p>
+<p>没耐住性子，又求助了龙飞。<br />
+龙飞一如既往的没有让袁小白失望，没过多久，就按约定和袁小白讲起了自己的理解。<br />
+还是从一张图开始：<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/02b74a0478414f0a835b0850f3dea321~tplv-k3u1fbpfcp-watermark.image?" /><br />
+看着这张密集的流程图，袁小白不禁暗自感慨，这才不到两周啊，就又梳理完了？！</p>
+<p>指着流程图，龙飞开始娓娓道来。<br />
+我是从<code>solver/scheduler_test.go</code>中的测试用例开始看的：</p>
+<ul>
+<li>创建Solver，创建的时候需要带上ResolveOpFunc，我的理解是对于scheduler而言，她是一套标准化流程，传入的Op需要提前做好封装，按接口实现，这里需要ResolveOpFunc帮助解析。袁小白想起了在上一步<code>j.list.load</code>中的newSharedOp，真如龙飞所说，提前封装了标准化的实例SharedOp。</li>
+<li>在初始化Solver也就是咱们的jobs时，实例化了如MemoryCache，jobs，actives状态的state集以及Scheduler。</li>
+<li>在初始化Scheduler时，除了初始化一些公用属性waitq, incoming, outgoing, stopped, closed, edgeFactory，最后还启动了s.loop，一直循环着监听着edge dispatch的信息。这里就相当于是消息总线，所有的edge dispatch事件都将从这里分发出去。</li>
+<li>接下来在测试中，我们初始化了一个Edge和自定义的Vertex；与此同时，我们需要用solver - jobs，新创建一个job，用来构建我们的Edge</li>
+<li>正式进入Build环节 - job.Build(ctx, Edge)，这里就是SharedOp真正创建的地方，在loadUnlocked中，通过getEdge，对原生op进行了封装。</li>
+<li>而j.list.s.build，是scheduler真正build Edge的地方。首先创建了一个Pipe实例，这里的pipe我理解就是linux中的pipe管道，像<code>./example | buildctl build</code>一样，中间的这一竖，通过这个简单的运算符，大大的提高了效率。在这里我们将通过管道来管理和接收子请求。在这里调度器通过s.signal，发出了构建目标的信号，并一直等待着构建立的结果，&lt;-wait就是会一直等在这，等到状态是Completed时，再继续走下去。</li>
+</ul>
+<p>原来就是在这里，袁小白没弄清楚的地方也正在这，那这个管道到底是怎么管理所有的依赖和请求的呢？<br />
+没有着急去打断龙飞，继续顺着龙飞的思路梳理下去。</p>
+<ul>
+<li>通过这个s.signal，我们新创建了一个dispatcher，并将s.next指针，指向了她。到了这里还记得s.loop吗，这时她会监听到这个新的edge的到来，并开始触发edge的unpark操作。</li>
+</ul>
+<p>说着龙飞又指向了中间这一块。<br />
+原来这个图得先看上，再看下，这时跳到了中间。<br />
+袁小白想，原来是这样，这跳来跳去，如果不是直接调用的话，确实容易迷失掉。</p>
+<ul>
+<li>在edge的unpark中，做了两件重要的事情。一件是e.op.CacheMap，在执行op前通过缓存获取所需要的信息，并且是根据e.op的不同而有不同的处理。我们可以设想一下SourceOp和ExecOp分别会怎么去处理自己的CacheMap。还有一件就是e.createInputRequests，这里会将我们的edge.Vertex分解成多个请求，并发送dispatch信号，由scheduler统一协调，那这些dispatch之间就需要通过pipe进行关联。</li>
+</ul>
+<p>说完，龙飞看着袁小白，好像在问听懂了没有。<br />
+袁小白连自己也不清楚怎么回答这个问题，是有解决一些疑惑，但现在要用自己的话来总结，好像又不知从何处说起。</p>
+<h1 id="pipe">神奇的Pipe</h1>
+<p>龙飞介绍完scheduler后，袁小白感觉是懂非懂。<br />
+说懂呢，因为大概了解到scheduler是如何将edge进行构建的，是如何拆解的，等等。<br />
+但要说到底是如何工作的，却又理不清，道不明。<br />
+这不，pipe就是其中之一。<br />
+在好奇心驱使下，袁小白开始分析起了pipe。</p>
+<h2 id="pipereceive">pipe使用场景之Receive</h2>
+<pre class="golang"><code>func TestPipe(t *testing.T) {
+   t.Parallel()
+
+   runCh := make(chan struct{})
+   f := func(ctx context.Context) (interface{}, error) {
+      select {
+      case &lt;-ctx.Done():
+         return nil, ctx.Err()
+      case &lt;-runCh:
+         return &quot;res0&quot;, nil
+      }
+   }
+
+   waitSignal := make(chan struct{}, 10)
+   signalled := 0
+   signal := func() {
+      signalled++
+      waitSignal &lt;- struct{}{}
+   }
+
+   p, start := NewWithFunction(f)
+   p.OnSendCompletion = signal
+   go start()
+   require.Equal(t, false, p.Receiver.Receive())
+
+   st := p.Receiver.Status()
+   require.Equal(t, st.Completed, false)
+   require.Equal(t, st.Canceled, false)
+   require.Nil(t, st.Value)
+   require.Equal(t, signalled, 0)
+
+   close(runCh)
+   &lt;-waitSignal
+
+   p.Receiver.Receive()
+   st = p.Receiver.Status()
+   require.Equal(t, st.Completed, true)
+   require.Equal(t, st.Canceled, false)
+   require.NoError(t, st.Err)
+   require.Equal(t, st.Value.(string), &quot;res0&quot;)
+}</code></pre>
+<p>可以看出如果我想通过pipe执行一个有阻塞的功能，如：</p>
+<pre class="golang"><code>f := func(ctx context.Context) (interface{}, error) {
+   select {
+   case &lt;-ctx.Done():
+      return nil, ctx.Err()
+   case &lt;-runCh:
+      return &quot;res0&quot;, nil
+   }
+}</code></pre>
+<p>这种场景很常见，比如HTTP网络请求，要等到runCh收到消息才能返回结果。<br />
+我们在使用<code>NewWithFunction</code>创建pipe的同时，还返回了一个start函数，同时我们可以设置pipe的OnSendCompletion事件，这样我们就可以在send动作完成的时候，做我们想做的事了，这里想做的事是signal，让计数器signalled累加一，然后写入waitSignal通道信息。<br />
+可以理解为当send操作完成时，通过waitSignal信道，进行通知。</p>
+<p>pipe执行<code>go start()</code>，Goroutine基本单元创建。<br />
+这时去检查pipe的Receiver的Status时，发现，并没有真正执行：</p>
+<pre class="golang"><code>require.Equal(t, false, p.Receiver.Receive())
+
+st := p.Receiver.Status()
+require.Equal(t, st.Completed, false)
+require.Equal(t, st.Canceled, false)
+require.Nil(t, st.Value)
+require.Equal(t, signalled, 0)</code></pre>
+<p>关闭runCh通道，触发了用户函数最终结果的返回。<br />
+但此时仍需等待Goroutine <code>go start()</code>真正的运行，用&lt;-waitSignal进行等待。<br />
+等到pipe的OnSendCompletion被调用时，也就意味着收到了waitSignal信道的消息，可以继续执行下去了。<br />
+再来看对应的状态，也就发生了期待中的变化：</p>
+<pre class="golang"><code>p.Receiver.Receive()
+st = p.Receiver.Status()
+require.Equal(t, st.Completed, true)
+require.Equal(t, st.Canceled, false)
+require.NoError(t, st.Err)
+require.Equal(t, st.Value.(string), &quot;res0&quot;)</code></pre>
+<h2 id="pipecancel">pipe使用场景之Cancel</h2>
+<p>和Receiver正常工作不同的是，Cancel取消了请求：</p>
+<pre class="golang"><code>p.Receiver.Cancel()
+&lt;-waitSignal</code></pre>
+<p>我们期待的结果，请求真正的被取消了：</p>
+<pre class="golang"><code>p.Receiver.Receive()
+st = p.Receiver.Status()
+require.Equal(t, st.Completed, true)
+require.Equal(t, st.Canceled, true)
+require.Error(t, st.Err)
+require.Equal(t, st.Err, context.Canceled)</code></pre>
+<p>通过管道pipe的使用场景，我们可以了解到设计初衷。<br />
+希望像linux上的管道一样，在一端输入请求，在另一端接收结果。<br />
+这里的请求可以是一个函数-f，并且可以是异步操作，在请求真正被发送的时候，我们有回调函数，可以让使用者接着处理或触发进一步的操作。<br />
+最后通过Receiver的状态，接收返回状态和返回结果，这个结果是真正的用户请求的结果。</p>
+<p>再试想一下，如果多个管道连接在一起会是什么样？<br />
+比如总共有三个管道，彼此互相联接，前一个管理的结果想要传递给后一个时，可以让后一个管理持有前一个管道的Receiver，并在前一个管道的OnSendCompletion事件中注册触发事件，那这样是不是就可以把依赖顺序设定好，并且接计划执行了？！</p>
+<p>那这个神奇的pipe到底是怎么实现的呢？<br />
+好奇心又让袁小白忍不住接着往下看了。<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/867c05326c4d40deb9c417165c2039b5~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>原来pipe是由这些组件组成的，那他们又是怎么互相协作，才能变出这么神奇的魔术的呢？</p>
+<h1 id="pipe">Pipe设计原理</h1>
+<p>袁小白也看过类似的设计模式，如pipe。<br />
+大体的思路就是抽象出运行操作的环境，有输入，有输出。<br />
+将操作的执行有序的衔接起来。<br />
+如果想要做得灵活一点，输入和输出可以不用统一，甚至可以自定义。<br />
+不过再一想之前看到的设计模式，通常是同步的操作，也就是操作本身并不复杂，只不过需要有序的将各操作串联起来，并提供通用功能的支持，比如输入输出的较验等。</p>
+<p>那用golang如何实现一个可支持中断操作的管道pipe功能呢？<br />
+袁小白的好奇心又一次跳了出来。</p>
+<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2a91b73a8ee548eba3f1591477fafd91~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>目前，对于pipe的构成有了一定的了解，那究竟buildkit是如何设计和实现这个pipe的呢？<br />
+带着这个疑问，袁小白开始梳理起了模块之间的时序图。</p>
+<h2 id="pipe">Pipe前期准备之初始化</h2>
+<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/db2f54ce0ff849c1af49317d50d0fc39~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<ul>
+<li><p>创建一个channel - runCh，和用户自定义function配合使用，如我们的可阻塞函数，我们在等待runCh的写入，这样我们就可以返回结果&quot;res0&quot;</p>
+<pre class="golang"><code>f := func(ctx context.Context) (interface{}, error) {
+   select {
+   case &lt;-ctx.Done():
+  return nil, ctx.Err()
+   case &lt;-runCh:
+  return &quot;res0&quot;, nil
+   }
+}</code></pre></li>
+<li><p>创建waitSignal信道，这样我做一些自己想做的事情，当signal被触发时，这里的时机就是pipe.OnSendCompletion<br />
+```golang<br />
+waitSignal := make(chan struct{}, 10)<br />
+signalled := 0<br />
+signal := func() {<br />
+signalled++<br />
+waitSignal &lt;- struct{}{}<br />
+}</p></li>
+</ul>
+<p>p, start := NewWithFunction(f)<br />
+p.OnSendCompletion = signal<br />
+<code>* 传入用户自定义函数，创建管道pipe。从返回结果来看，我们得到一个pipe和一个start函数</code>golang<br />
+return p, func() {<br />
+res, err := f(ctx)<br />
+if err != nil {<br />
+p.Sender.Finalize(nil, err)<br />
+return<br />
+}<br />
+p.Sender.Finalize(res, nil)<br />
+}<br />
+```<br />
+可以看到，这里是我们自定义的函数真正被调用的地方。<br />
+并且pipe还调用了Sender.Finalize方法。</p>
+<ul>
+<li>真正创建Pipe实例的函数是<code>New</code>：<br />
+```golang<br />
+func New(req Request) *Pipe {<br />
+cancelCh := &amp;channel{}<br />
+roundTripCh := &amp;channel{}<br />
+pw := &amp;sender{<br />
+req: req,<br />
+sendChannel: roundTripCh,<br />
+}<br />
+pr := &amp;receiver{<br />
+req: req,<br />
+recvChannel: roundTripCh,<br />
+sendChannel: cancelCh,<br />
+}</li>
+</ul>
+<p>p := &amp;Pipe{<br />
+Sender: pw,<br />
+Receiver: pr,<br />
+}</p>
+<p>cancelCh.OnSendCompletion = func() {<br />
+v, ok := cancelCh.Receive()<br />
+if ok {<br />
+pw.setRequest(v.(Request))<br />
+}<br />
+if p.OnReceiveCompletion != nil {<br />
+p.OnReceiveCompletion()<br />
+}<br />
+}</p>
+<p>roundTripCh.OnSendCompletion = func() {<br />
+if p.OnSendCompletion != nil {<br />
+p.OnSendCompletion()<br />
+}<br />
+}</p>
+<p>return p<br />
+}<br />
+```<br />
+这里正是sender, receiver, pipe创建的地方。<br />
+值得我们关注的地方还有cancel.OnSendCompletion和roundTripCh.OnSendCompletion，它们分别会调用p.OnReceiveCompletion和p.OnSendCompletion生命周期函数。<br />
+而这里正是channel和pipe之前进行交付的地方。<br />
+最后就是receiver和sender都持有roundTripCh，但不同的是，roundTripCh对于receiver而言是recvChannel，而对于sender而言，是sendChannel，这里就是管道连接建立的地方，一端负责写send，另一端负责读recv。</p>
+<ul>
+<li>准备执行start - <code>go start()</code>，基于对goroutine的了解，通常这并不会立马得到运行时的实际调用，因为切换goroutine还是有成本的，虽然相对切换线程的成本小，但并不是完全没有。接下来的验证进一步佐证了袁小白的猜测：<br />
+```golang<br />
+go start()<br />
+require.Equal(t, false, p.Receiver.Receive())</li>
+</ul>
+<p>st := p.Receiver.Status()<br />
+require.Equal(t, st.Completed, false)<br />
+require.Equal(t, st.Canceled, false)<br />
+require.Nil(t, st.Value)<br />
+require.Equal(t, signalled, 0)<br />
+```</p>
+<h2 id="pipe-happy-path---">Pipe happy path - 正常流程</h2>
+<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/05f3adb677794fbc801533ee18b7ded8~tplv-k3u1fbpfcp-watermark.image?" /><br />
+正常流程就是我们搭建好了pipe管道，并执行，得到我们期待的结果，一切都很顺利。</p>
+<ul>
+<li><p>准备正常返回，也就是runCh信道正常收到消息 - <code>close(runCh)</code>，比如http请求的异步请求正常返回；然后当前goroutine进入阻塞 - <code>&lt;-waitSignal</code>，监听信号，等待被唤醒：</p>
+<pre class="golang"><code>close(runCh)
+&lt;-waitSignal</code></pre></li>
+<li>start函数正式被执行，用户自定义函数被调用，并返回结果&quot;res&quot;；触发p.Sender.Finalize</li>
+<li><p>而Sender在Finalize函数中所做的事情有两件，一件是更新status的属性，如Value: res, Err: nil, Completed: true, Canceled: req.Canceled false；另一件就是调用sendChannel发送刚刚更新好的status，像之前提到的,sender的sendChannel就是共用的roundTripChannel：</p>
+<pre class="golang"><code>func (c *channel) Send(v interface{}) {
+   c.value.Store(&amp;wrappedValue{value: v})
+   if c.OnSendCompletion != nil {
+  c.OnSendCompletion()
+   }
+}</code></pre></li>
+<li><p>sendChannel的Send方法，又调用了提前设置好的OnSendCompletion事件：</p>
+<pre class="golang"><code>roundTripCh.OnSendCompletion = func() {
+   if p.OnSendCompletion != nil {
+  p.OnSendCompletion()
+   }
+}</code></pre>
+<p>实际调用的就是pipe的OnSendCompletion事件，而这个事件正是在测试中设置好的signal函数：</p>
+<pre class="golang"><code>signal := func() {
+   signalled++
+   waitSignal &lt;- struct{}{}
+}</code></pre>
+<p>对计数器进行累加操作。<br />
+并写入waitSignal信道。<br />
+这样就唤醒了等待waitSignal信道更新的其它goroutine，这里指的是我们的测试 - main goroutine。</p></li>
+<li><p>再次调用p.Receiver.Status时，得到的就是我们所期待的结果：</p>
+<pre class="golang"><code>p.Receiver.Receive()
+st = p.Receiver.Status()
+require.Equal(t, st.Completed, true)
+require.Equal(t, st.Canceled, false)
+require.NoError(t, st.Err)
+require.Equal(t, st.Value.(string), &quot;res0&quot;)</code></pre></li>
+</ul>
+<h2 id="pipe-">pipe 取消流程</h2>
+<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/625c42bdecc24ac298fd62ef64fdabde~tplv-k3u1fbpfcp-watermark.image?" /><br />
+和正常流程不一样的地方在于，用户主动取消息了pipe操作，调用了<code>p.Receiver.Cancel()</code></p>
+<pre class="golang"><code>p.Receiver.Cancel()
+&lt;-waitSignal</code></pre>
+<ul>
+<li><p>首先触发的就是Receiver.Cancel操作：</p>
+<pre class="golang"><code>func (pr *receiver) Cancel() {
+   req := pr.req
+   if req.Canceled {
+  return
+   }
+   req.Canceled = true
+   pr.sendChannel.Send(req)
+}</code></pre>
+<p>更新req的状态。<br />
+因为sender和receiver实例都持有了req，所以他们可以共享req信息。<br />
+调用sendChannel.Send(req)，因为这里的sendChannel就是之前的cancelCh，当调用channel的Send方法时：</p>
+<pre class="golang"><code>func (c *channel) Send(v interface{}) {
+   c.value.Store(&amp;wrappedValue{value: v})
+   if c.OnSendCompletion != nil {
+  c.OnSendCompletion()
+   }
+}</code></pre>
+<p>也会调用对应的OnSendCompletion操作：</p>
+<pre class="golang"><code>cancelCh.OnSendCompletion = func() {
+   v, ok := cancelCh.Receive()
+   if ok {
+  pw.setRequest(v.(Request))
+   }
+   if p.OnReceiveCompletion != nil {
+  p.OnReceiveCompletion()
+   }
+}</code></pre>
+<p>在这里，又会调用pipe的OnReceiveCompletion操作：<br />
+```golang<br />
+ctx, cancel := context.WithCancel(context.TODO())</p></li>
+</ul>
+<p>p.OnReceiveCompletion = func() {<br />
+if req := p.Sender.Request(); req.Canceled {<br />
+cancel()<br />
+}<br />
+}<br />
+```<br />
+因为req的Canceled已被设置成true，所以会调用context的cancel方法。<br />
+这里正是连接start函数的地方，因为执行自定义函数f时，会传入ctx也就是上下文，这时f(ctx)就会报错。</p>
+<ul>
+<li>和正常流程不同的是，在调用Sender.finalize的时候，传入的就是nil, err - p.SenderFinalize(nil, err)</li>
+<li>接下来和正常流程的调用顺序一样，最后会调用signal并唤醒main goroutine，也就是我们的测试函数</li>
+</ul>
+<p>得到的结果自然也就是我们期待的：</p>
+<pre class="golang"><code>p.Receiver.Receive()
+st = p.Receiver.Status()
+require.Equal(t, st.Completed, true)
+require.Equal(t, st.Canceled, true)
+require.Error(t, st.Err)
+require.Equal(t, st.Err, context.Canceled)</code></pre>
+<h1 id="scheduleredge">Scheduler的构建源Edge</h1>
+<p>为了理解龙飞讲解的scheduler，袁小白先是去了解了pipe的使用方法和设计原理，现在回忆起来，有以下特点：</p>
+<ul>
+<li>pipe由sender和receiver组成</li>
+<li>当sender所依赖的用户函数执行完成后，会调用sender.Finalized，并回调pipe.OnSendCompletion方法，就是在这里建立了pipe的关键结点，当回调发生时，意味着用户函数已经执行完成</li>
+<li>receiver可以通过Receive获取用户函数执行的结果</li>
+<li>receiver还可以主动取消req，让用户请求被取消执行，取消成功时也会有一个回调函数pipe.OnReceiveCompletion</li>
+</ul>
+<p>对于用户来说，使用起来也很方便，可以直接初始化一个pipe，也可以传入一个待执行函数来创建一个pipe。<br />
+如果关心用户函数执行的结果，就注册onSendCompletion函数；如果关心取消事件，则注册OnReceiveCompletion事件。</p>
+<p>弄清楚了pipe的工作原理，现在是时侯去探索scheduler究竟是如何高效组织管理好构建事件了。</p>
+<h2 id="edge">构建源Edge</h2>
+<p>回到构建事件的起点<code>jobs.go j.Build</code>，我们发现构建源就是在这里被准备好的：</p>
+<pre class="golang"><code>...
+v, err := j.list.load(e.Vertex, nil, j)
+if err != nil {
+   return nil, nil, err
+}
+e.Vertex = v
+...</code></pre>
+<p>将原有的e.Vertex转换成了j.list.load的返回值，就是vertexWithCachOptions，而这个新的vertex，实现了Vertex的所有接口，其中就实现了<code>Inputs() []Edge</code>，也就是在这里将所有的Edge都关联了起来：</p>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/0bc74c2b621a49de8715fecd1ca2e164~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>用我们常用的例子来理解，我们现在有两个Op，一个是SourceOp，另一个是ExecOp，都被包裹在了常规的vertex中，为了对Edge进行构建，我们需要将这些初始的vertex包装成vertexWithCacheOptions，并用Edge来进行关联。<br />
+这样，DAG图变得更清晰了：</p>
+<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/6e4827c5731343ddb104a83110b835ee~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>DAG有向无环图是由结点Vertex和边Edge组成。<br />
+目前我们的结点进行封闭后，最外层是vertexWithCacheOptions，原始层就是vertex，而vertex又连接着Op，也就是operation，我们这个简单的例子中有两个Op。<br />
+Vertex之间的关联方式是用<code>Inputs()</code>关联起来的，而Input就是Edge。<br />
+目前我们有两条Edge，就算是最后一个结点，也有一条边，而我们准备开始构建的源，就是这一条边 - Edge0。</p>
+<p>那Scheduler究竟是怎么编排Edge的构建任务的呢？</p>
+<h1 id="scheduler">编排高手Scheduler</h1>
+<h2 id="scheduler.build">scheduler.build</h2>
+<p>现在有两个Edge，Scheduler会怎么编排任务呢？<br />
+Scheduler开始构建的地方：</p>
+<pre class="golang"><code>// build evaluates edge into a result
+func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) {
+   s.mu.Lock()
+   e := s.ef.getEdge(edge)
+   ...
+   wait := make(chan struct{})
+   var p *pipe.Pipe
+   p = s.newPipe(e, nil, pipe.Request{Payload: &amp;edgeRequest{desiredState: edgeStatusComplete}})
+   p.OnSendCompletion = func() {
+      p.Receiver.Receive()
+      if p.Receiver.Status().Completed {
+         close(wait)
+      }
+   }
+   ...
+   &lt;-wait
+   ...
+}</code></pre>
+<p>可以看到，最先获取edge，然后创建EdgePipe来处理Edge，这里的onSendCompletion里最终要完成的任务就是<code>close(wait)</code>，就是说我们这是最后一个Edge，当OnSendCompletion完成后，也就意味着这一次的构建全部完成。</p>
+<h2 id="scheduler-newpipe">scheduler newPipe</h2>
+<p>再来看看<code>newPipe</code>：</p>
+<pre class="golang"><code>// newPipe creates a new request pipe between two edges
+func (s *scheduler) newPipe(target, from *edge, req pipe.Request) *pipe.Pipe {
+   p := &amp;edgePipe{
+      Pipe:   pipe.New(req),
+      Target: target,
+      From:   from,
+   }
+
+   s.signal(target)
+   if from != nil {
+      p.OnSendCompletion = func() {
+         p.mu.Lock()
+         defer p.mu.Unlock()
+         s.signal(p.From)
+      }
+      s.outgoing[from] = append(s.outgoing[from], p)
+   }
+   s.incoming[target] = append(s.incoming[target], p)
+   p.OnReceiveCompletion = func() {
+      p.mu.Lock()
+      defer p.mu.Unlock()
+      s.signal(p.Target)
+   }
+   return p.Pipe
+}</code></pre>
+<p>从参数可以看出，有两个edge传入，一个是target，一个是from，也就是第一个是待构建的edge，而from则是来源于哪个edge构建的请求，从<code>build</code>里的调用可以看出，from为nil，也就是第一构建的edge就是最后一个edge。<br />
+当from不为空时，OnSendCompletion会调用<code>s.signal(p.From)</code>，发送from也就是源的信号。<br />
+OnReceiveCompletion则会发送target的信号。<br />
+同时将from，target分别添加到s.outgoign, s.incoming数组中。</p>
+<h2 id="scheduler.signal">scheduler.signal</h2>
+<pre class="golang"><code>// signal notifies that an edge needs to be processed again
+func (s *scheduler) signal(e *edge) {
+   s.muQ.Lock()
+   if _, ok := s.waitq[e]; !ok {
+      d := &amp;dispatcher{e: e}
+      if s.last == nil {
+         s.next = d
+      } else {
+         s.last.next = d
+      }
+      s.last = d
+      s.waitq[e] = struct{}{}
+      s.cond.Signal()
+   }
+   s.muQ.Unlock()
+}</code></pre>
+<p>根据信号edge创建新的&amp;dispatcher，加入到s.last，并触发信号。<br />
+那发出的信号被谁接收到了，又做了什么样的处理呢？</p>
+<pre class="golang"><code>func (s *scheduler) loop() {
+   defer func() {
+      close(s.closed)
+   }()
+
+   go func() {
+      &lt;-s.stopped
+      s.mu.Lock()
+      s.cond.Signal()
+      s.mu.Unlock()
+   }()
+
+   s.mu.Lock()
+   for {
+      select {
+      case &lt;-s.stopped:
+         s.mu.Unlock()
+         return
+      default:
+      }
+      s.muQ.Lock()
+      l := s.next
+      if l != nil {
+         if l == s.last {
+            s.last = nil
+         }
+         s.next = l.next
+         delete(s.waitq, l.e)
+      }
+      s.muQ.Unlock()
+      if l == nil {
+         s.cond.Wait()
+         continue
+      }
+      s.dispatch(l.e)
+   }
+}</code></pre>
+<p>记得scheduler在被jobs初始化的时候，就触发了这个loop，会一直监听最新的dispatch事件，最终分发事件<code>s.dispatch(l.e)</code>：</p>
+<pre class="golang"><code>// dispatch schedules an edge to be processed
+func (s *scheduler) dispatch(e *edge) {
+   ...
+
+   pf := &amp;pipeFactory{s: s, e: e}
+
+   // unpark the edge
+   e.unpark(inc, updates, out, pf)
+   ...
+}</code></pre>
+<p>也就是在分发edge的时候，调用了<code>e.unpark</code>，这就是真正处理edge的地方：</p>
+<pre class="golang"><code>func (e *edge) unpark(incoming []pipe.Sender, updates, allPipes []pipe.Receiver, f *pipeFactory) {
+   ...
+
+   desiredState, done := e.respondToIncoming(incoming, allPipes)
+   if done {
+      return
+   }
+
+   cacheMapReq := false
+   // set up new outgoing requests if needed
+   if e.cacheMapReq == nil &amp;&amp; (e.cacheMap == nil || len(e.cacheRecords) == 0) {
+      index := e.cacheMapIndex
+      e.cacheMapReq = f.NewFuncRequest(func(ctx context.Context) (interface{}, error) {
+         cm, err := e.op.CacheMap(ctx, index)
+         return cm, errors.Wrap(err, &quot;failed to load cache key&quot;)
+      })
+      cacheMapReq = true
+   }
+   ...
+   if e.execReq == nil {
+      if added := e.createInputRequests(desiredState, f, false); !added &amp;&amp; !e.hasActiveOutgoing &amp;&amp; !cacheMapReq {
+         bklog.G(context.TODO()).Errorf(&quot;buildkit scheluding error: leaving incoming open. forcing solve. Please report this with BUILDKIT_SCHEDULER_DEBUG=1&quot;)
+         debugSchedulerPreUnpark(e, incoming, updates, allPipes)
+         e.createInputRequests(desiredState, f, true)
+      }
+   }
+
+}</code></pre>
+<p>在这里：</p>
+<ul>
+<li><code>desiredState, done := e.respondToIncoming(incoming, allPipes)</code>，判断edge构建是否完成</li>
+<li><code>e.cacheMapReq = f.NewFuncRequest(...)</code>，创建获取op.CacheMap的操作，可以看到这里又创建了新的pipe</li>
+<li><code>added := e.createInputRequests(...)</code>，如果是可执行的Op，要看看依赖有没有准备好，也就是自己的Inputs，又会创建新的pipe。</li>
+</ul>
+<p>这一环环的梳理下来后，如何更直观的理解呢？<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/5b0503fe253243348c84f7b65b69ee7f~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<ul>
+<li>从Edge0开始构建，创建了一个只关心<code>close(wait)</code>的pipe0</li>
+<li>进入到<code>unpark</code>后，会检查自己Op的CacheMap，也就是这里的第二步，创建的pipe1，pipe1是从pipe0来，所以发送完成的时候会发送edge0信号，这样再次分发的dispatch事件就可以让edge0的pipe获取所需要内容，看看是否已经完成</li>
+<li>edge0是有inputs()的，也就是edge1，所以也要为edge1创建构建事件，创建了pipe2，也就是步骤3</li>
+<li>在edge1开始构建后，和edge1一样，先看看自己的Op是否在CacheMap中，创建了pipe3，也就是第4步，但这里pipe3发送完成的时候是要通知edge1的</li>
+</ul>
+<p>可以看出这也是一个递归，而pipe的作用就是将大家都关联起来，可以触发回调事件，这里是<code>s.dispatch</code>，<code>s.loop</code>就像事件总线，负责监听新事件，并发送。</p>
+<p>既然是递归，那就有了口，那edge的出口又在哪儿呢，是怎么判断自己完成了呢？<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/632f5ad7ec1b4f38a24b1bc8ed46be77~tplv-k3u1fbpfcp-watermark.image?" /><br />
+还记得s.incoming, s.outgoing数组吗？<br />
+里面存储了所有的pipe，而edge递归构建的出口就在：</p>
+<pre class="golang"><code>desiredState, done := e.respondToIncoming(incoming, allPipes)</code></pre>
+<p>在这里和e0相关的pipe有p0, p1, p2，也就是说这三个pipe都完成后，e0才算构建完成。<br />
+同理，和e1相关的有p2, p3，只有p2, p3都完成了才算构建完成。</p>
+<p>原来如此！<br />
+Scheduler真是一位好管家，将所有的事情管理的有条不紊。</p>
+<h1 id="sourceop-cachemap">SourceOp CacheMap</h1>
+<p><embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/79d721bfe25541babceaf284b3a9c505~tplv-k3u1fbpfcp-watermark.image?" /><br />
+要想理解递归，除了抽象出同样的行为外，再就是找到循环的出口。<br />
+在上一次梳理的结果中可以看到，Edge1是递归的最后一个edge，在edge中，由于SourceOp的inputs为空，所以在edge中的出口是pipe3，也就是op.CacheMap:</p>
+<pre class="golang"><code>f.NewFuncRequest(func(ctx context.Context) (interface{}, error) {
+   cm, err := e.op.CacheMap(ctx, index)
+   return cm, errors.Wrap(err, &quot;failed to load cache key&quot;)
+})</code></pre>
+<p>那现在是时候看一看这个自定义函数做了哪些处理，这样就是能调用pipe.OnSendCompletion来完成并退出这个操作，也就是递归结束开始的信号。</p>
+<p><code>e.op.CacheMap</code>究竟做了什么呢？<br />
+经过梳理，袁小白终于找到了CacheMap真正干活的那个了：<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/5c688cbdebd04160b8888004b26738af~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<ol>
+<li>出发点-edge unpark，在这里将op.CacheMap封装成自定义函数，用于新建pipe</li>
+<li>op来自于jobs里用newSharedOp创建出来的sharedOp，这样可以将vertex封闭成在上一阶段处理所需要的状态和信息</li>
+<li>在sharedOp的CacheMap里，是通过s.getOp，也就是sharedOp.getOp方法来获取op的</li>
+<li>在上一步中，又是用的sharedOp的resolver来解析的，而这个resolver的类型是state.opts.ResolveOpFunc，它来自于jl.opts</li>
+<li>jl指的还是jobs，是在NewSolver创建方法被调用的时候，传入的SolverOpt来帮助说明的</li>
+<li>NewSolver是在solver的New方法里被调用的</li>
+<li>实际的解析是发生在worker里的ResolveOp方法，在咱们的例子中，因为最后一个op是source op，对应在dockerfile里的指令就是<code>FROM FOO</code></li>
+<li>最终，是由我们ops.NewSourceOp方法创建出来的SourceOp实例，调用自己的CacheMap来真正处理这一请求的</li>
+</ol>
+<p>梳理完后，袁小白不禁松了口气。<br />
+这个传递链也太长了，好多前面命名是用这个，后面是那个；要么就是从前到后用的都一个，一不留神就断掉了，难怪源码看起来这么费劲费时间。</p>
+<p>好在有龙飞的全流程图，来对比着检验一下：<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2486b86b483a4242b6cf4f01cc341b4b~tplv-k3u1fbpfcp-watermark.image?" /><br />
+关键的点都有，还有一些细节看来可以补充下。</p>
+<p>那再看看好容易找到的最终处理代码：</p>
+<pre class="golang"><code>func (s *sourceOp) CacheMap(ctx context.Context, g session.Group, index int) (*solver.CacheMap, bool, error) {
+   src, err := s.instance(ctx)
+   if err != nil {
+      return nil, false, err
+   }
+
+   k, pin, cacheOpts, done, err := src.CacheKey(ctx, g, index)
+   if err != nil {
+      return nil, false, err
+   }
+
+   dgst := digest.FromBytes([]byte(sourceCacheType + &quot;:&quot; + k))
+   if strings.HasPrefix(k, &quot;session:&quot;) {
+      dgst = digest.Digest(&quot;random:&quot; + strings.TrimPrefix(dgst.String(), dgst.Algorithm().String()+&quot;:&quot;))
+   }
+
+   var buildInfo map[string]string
+   if !strings.HasPrefix(s.op.Source.GetIdentifier(), &quot;local://&quot;) {
+      buildInfo = map[string]string{s.op.Source.GetIdentifier(): pin}
+   }
+
+   return &amp;solver.CacheMap{
+      // TODO: add os/arch
+      Digest:    dgst,
+      Opts:      cacheOpts,
+      BuildInfo: buildInfo,
+   }, done, nil
+}</code></pre>
+<p>看来先是初始化一个sourceOp的实例 - <code>s.instance(ctx)</code>，再根据缓存健从缓存中取对应的信息 - <code>src.CacheKey(ctx, g, index)</code>。<br />
+没忍住点进instance方法看了一下，发现这个实例，指的是实现了source.SourceInstance接口的对象，由<code>s.sm.Resolve</code>方法进行的解析，sm指的是source.Manager，Resolve方法也就是从自己的sources源中取出实例，可另一个问题又冒了出来 - 这些sources又是在哪里被装载的呢？</p>
+<h1 id="sourceop-cachekey">SourceOp CacheKey</h1>
+<p>在SourceOp的CacheMap里，需要获取<code>s.instance</code>，而这里又依赖于<code>s.sm.Resolve</code>，可以看到sm实际上就是source.Manager，依赖于Resolve方法。<br />
+没错又一个Resolve，袁小白自言自语到，看来取名字真的很关键，大家都有resolve的话，这理解起来就太容易混淆了。<br />
+再看这个Resolve：</p>
+<pre class="golang"><code>func (sm *Manager) Resolve(ctx context.Context, id Identifier, sessM *session.Manager, vtx solver.Vertex) (SourceInstance, error) {
+   sm.mu.Lock()
+   src, ok := sm.sources[id.ID()]
+   sm.mu.Unlock()
+
+   if !ok {
+      return nil, errors.Errorf(&quot;no handler for %s&quot;, id.ID())
+   }
+
+   return src.Resolve(ctx, id, sessM, vtx)
+}</code></pre>
+<p>居然是用数组存起来的：<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/e4861a64f268443e83f83ec73519cfe9~tplv-k3u1fbpfcp-watermark.image?" /><br />
+对照着operation创建的地方，袁小白很快发现SourceOp是在worker中被创建的，那这个source.Manager是不是也在那里预先装载好的呢？</p>
+<p>果然，就是在这里：</p>
+<pre class="golang"><code>// NewWorker instantiates a local worker
+func NewWorker(ctx context.Context, opt WorkerOpt) (*Worker, error) {
+   ...
+   sm, err := source.NewManager()
+   if err != nil {
+      return nil, err
+   }
+
+   is, err := containerimage.NewSource(containerimage.SourceOpt{
+      Snapshotter:   opt.Snapshotter,
+      ContentStore:  opt.ContentStore,
+      Applier:       opt.Applier,
+      ImageStore:    opt.ImageStore,
+      CacheAccessor: cm,
+      RegistryHosts: opt.RegistryHosts,
+      LeaseManager:  opt.LeaseManager,
+   })
+   if err != nil {
+      return nil, err
+   }
+
+   sm.Register(is)
+   ...
+}</code></pre>
+<ul>
+<li>首先用source.NewManager创建了source manager实例</li>
+<li>紧接着注册了新的source - is，也就是container.NewSource实例</li>
+</ul>
+<p>为了验证自己的想法，袁小白决定去检查一下这个实例是否有Resolve方法。<br />
+结果不出所料，就在这：</p>
+<pre class="golang"><code>func (is *Source) Resolve(ctx context.Context, id source.Identifier, sm *session.Manager, vtx solver.Vertex) (source.SourceInstance, error) {
+   imageIdentifier, ok := id.(*source.ImageIdentifier)
+   if !ok {
+      return nil, errors.Errorf(&quot;invalid image identifier %v&quot;, id)
+   }
+
+   platform := platforms.DefaultSpec()
+   if imageIdentifier.Platform != nil {
+      platform = *imageIdentifier.Platform
+   }
+
+   pullerUtil := &amp;pull.Puller{
+      ContentStore: is.ContentStore,
+      Platform:     platform,
+      Src:          imageIdentifier.Reference,
+   }
+   p := &amp;puller{
+      CacheAccessor:  is.CacheAccessor,
+      LeaseManager:   is.LeaseManager,
+      Puller:         pullerUtil,
+      id:             imageIdentifier,
+      RegistryHosts:  is.RegistryHosts,
+      ImageStore:     is.ImageStore,
+      Mode:           imageIdentifier.ResolveMode,
+      Ref:            imageIdentifier.Reference.String(),
+      SessionManager: sm,
+      vtx:            vtx,
+   }
+   return p, nil
+}</code></pre>
+<p>居然返回了个Puller实例，可转过头一想，也对，如果我是一个SourceOp，对应的就是Dockerfile的From指令，如果我要获取这个父容器的信息，自然需要一个对象帮我获取，那这里就会有用来提供存储服务的对象 - ContentStore，和用来提升效率的缓存策略 - CacheAccessor。</p>
+<p>Instance是找到了，就是这个Puller，再看这个Instance的CacheKey:</p>
+<pre class="golang"><code>func (p *puller) CacheKey(ctx context.Context, g session.Group, index int) (cacheKey string, imgDigest string, cacheOpts solver.CacheOpts, cacheDone bool, err error) {
+   ...
+   _, err = p.g.Do(ctx, &quot;&quot;, func(ctx context.Context) (_ interface{}, err error) {
+      ...
+      p.manifest, err = p.PullManifests(ctx)
+      ...
+      k, err := mainManifestKey(ctx, desc, p.Platform)
+      ...
+      p.manifestKey = k.String()
+      dt, err := content.ReadBlob(ctx, p.ContentStore, p.manifest.ConfigDesc)
+      ...
+   })
+   ...
+   if index == 0 || p.configKey == &quot;&quot; {
+      return p.manifestKey, p.manifest.MainManifestDesc.Digest.String(), cacheOpts, cacheDone, nil
+   }
+   return p.configKey, p.manifest.MainManifestDesc.Digest.String(), cacheOpts, cacheDone, nil
+}</code></pre>
+<p>原来这就是下载真正发生的地方:</p>
+<ul>
+<li>获取镜像所有Manifests</li>
+<li>从ContentStore中读取对应的ConfigDesc</li>
+<li>返回对应的manifest key</li>
+</ul>
+<p>（这里又出现了新的知识点，那就是OCI中关于Image组织形式，我们这里先挖个坑，后续会继续我们的源码解析。<br />
+为了方便理解，我们先简单的理解为Image的描述和配置信息。）</p>
+<p>再回到edge.go的unpark里：<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/f55616e5f41b4149a2d62eeca17faa99~tplv-k3u1fbpfcp-watermark.image?" /><br />
+我们的pipe3这时候可以回调OnSendCompletion了。</p>
+<p>我们准备好了镜像的基础信息后，又要拿这些信息干什么用呢？</p>
+<h1 id="sourceop-exec">SourceOp Exec</h1>
+<p>带着镜像基础信息准备好后，又将要用来做什么的问题。<br />
+袁小白重新回到edge.go的unpark函数里，看到了接下来的动作：</p>
+<pre class="golang"><code>// execute op
+if e.execReq == nil &amp;&amp; desiredState == edgeStatusComplete {
+   if ok := e.execIfPossible(f); ok {
+      return
+   }
+}</code></pre>
+<p>顺着代码就找到了接下来需要发生的操作：<code>e.execReq = f.NewFuncRequest(e.execOp)</code>，原来又创建了一个请求，而这个请求依赖于上一个CacheMap操作的结束，和上一个操作类似，这里实际调用的是<code>e.op.Exec(ctx, toResultSlice(inputs))</code>，也就是Op的另一个操作 - <em>Exec</em></p>
+<pre class="golang"><code>func (s *sourceOp) Exec(ctx context.Context, g session.Group, _ []solver.Result) (outputs []solver.Result, err error) {
+   src, err := s.instance(ctx)
+   ...
+   ref, err := src.Snapshot(ctx, g)
+   ...
+   return []solver.Result{worker.NewWorkerRefResult(ref, s.w)}, nil
+}</code></pre>
+<p>instance和CacheMap一样，也就是说我们接下来要看，准备好image基本信息后，puller将会用这些信息来做什么？</p>
+<pre class="golang"><code>func (p *puller) Snapshot(ctx context.Context, g session.Group) (ir cache.ImmutableRef, err error) {
+   ...
+   var current cache.ImmutableRef
+   ...
+   var parent cache.ImmutableRef
+   for _, layerDesc := range p.manifest.Descriptors {
+      parent = current
+      current, err = p.CacheAccessor.GetByBlob(ctx, layerDesc, parent,
+         p.descHandlers, cache.WithImageRef(p.manifest.Ref))
+      if parent != nil {
+         parent.Release(context.TODO())
+      }
+      if err != nil {
+         return nil, err
+      }
+   }
+   ...
+   return current, nil
+}</code></pre>
+<p>从返回参数cache.ImmutableRef可以看出，SourceOp执行后的结果就是用来准备这个immutableRef的。<br />
+我们准备SourceOp是为了ExecOp做准备，也就是说这个Snapshot方法是为了准备好容器运行时的基础镜像做准备的，很可能和rootfs相关。</p>
+<p>从上面的代码来看，主要完成这个操作的是<code>p.CacheAccessor.GetByBlob</code>，这里的CacheAccessor又是什么呢？<br />
+还是运用以前的方法 - 去到worker被创建的地方：</p>
+<pre class="golang"><code>cm, err := cache.NewManager(cache.ManagerOpt{
+   Snapshotter:     opt.Snapshotter,
+   PruneRefChecker: imageRefChecker,
+   Applier:         opt.Applier,
+   GarbageCollect:  opt.GarbageCollect,
+   LeaseManager:    opt.LeaseManager,
+   ContentStore:    opt.ContentStore,
+   Differ:          opt.Differ,
+   MetadataStore:   opt.MetadataStore,
+})
+...
+sm, err := source.NewManager()
+...
+is, err := containerimage.NewSource(containerimage.SourceOpt{
+   ...
+   CacheAccessor: cm,
+   ...
+})</code></pre>
+<p>原来CacheAccessor就是cache.Manager，那自然这个GetByBlob就是由她提供的服务：</p>
+<pre class="golang"><code>func (cm *cacheManager) GetByBlob(ctx context.Context, desc ocispecs.Descriptor, parent ImmutableRef, opts ...RefOption) (ir ImmutableRef, rerr error) {
+   diffID, err := diffIDFromDescriptor(desc)
+   ...
+   chainID := diffID
+   blobChainID := imagespecidentity.ChainID([]digest.Digest{desc.Digest, diffID})
+   ...
+   var p *immutableRef
+   var parentID string
+   ...
+   sis, err := cm.searchBlobchain(ctx, blobChainID)
+   ...
+
+   for _, si := range sis {
+      ref, err := cm.get(ctx, si.ID(), opts...)
+      if err != nil &amp;&amp; !IsNotFound(err) {
+         return nil, errors.Wrapf(err, &quot;failed to get record %s by blobchainid&quot;, sis[0].ID())
+      }
+      if ref == nil {
+         continue
+      }
+      if p != nil {
+         releaseParent = true
+      }
+      if err := setImageRefMetadata(ref.cacheMetadata, opts...); err != nil {
+         return nil, errors.Wrapf(err, &quot;failed to append image ref metadata to ref %s&quot;, ref.ID())
+      }
+      return ref, nil
+   }
+
+   sis, err = cm.searchChain(ctx, chainID)
+   ...
+
+   var link *immutableRef
+   for _, si := range sis {
+      ref, err := cm.get(ctx, si.ID(), opts...)
+      // if the error was NotFound or NeedsRemoteProvider, we can&#39;t re-use the snapshot from the blob so just skip it
+      if err != nil &amp;&amp; !IsNotFound(err) &amp;&amp; !errors.As(err, &amp;NeedsRemoteProvidersError{}) {
+         return nil, errors.Wrapf(err, &quot;failed to get record %s by chainid&quot;, si.ID())
+      }
+      if ref != nil {
+         link = ref
+         break
+      }
+   }
+
+   id := identity.NewID()
+   snapshotID := chainID.String()
+   blobOnly := true
+   if link != nil {
+      snapshotID = link.getSnapshotID()
+      blobOnly = link.getBlobOnly()
+      go link.Release(context.TODO())
+   }
+   ...
+   md, _ := cm.getMetadata(id)
+   rec := &amp;cacheRecord{
+      mu:            &amp;sync.Mutex{},
+      cm:            cm,
+      refs:          make(map[ref]struct{}),
+      parent:        p,
+      cacheMetadata: md,
+   }
+   ...
+   cm.records[id] = rec
+
+   return rec.ref(true, descHandlers), nil
+}</code></pre>
+<p>总体实现思路是：</p>
+<ul>
+<li>根据desc计算diffID</li>
+<li>准备chainID, blobChainID</li>
+<li>用cache manager来搜索blobChain - <code>cm.searchBlobchain(ctx, blobChainID)</code>，如果找到了，就返回对应的ref</li>
+<li>如果上面找不着，就从chain里找，<code>cm.searchChain(ctx, chainID)</code></li>
+<li>如果都没找着，就新建一个cacheRecord，并设置好对应的参数，并持久化 - <code>rec.commitMetada</code></li>
+</ul>
+<p>为了顺利走完buildkit的全流程，我们先专注在cache manager的cacheRecord，来看看它又是怎么设计的。</p>
+<p>cache manager中存储了cache record的数组，从调用情况来看，是用来缓存现有的record的，用id进行存储。<br />
+那这样也好理解，如果id是唯一的，那么就方便下一次再有用到这个id的时候，就可以直接从缓存中命中。</p>
+<p>进一步看cacheRecord定义的地方，发现复杂的是cacheRecord和immutableRef及mutable Ref之间的关系：</p>
+<pre class="golang"><code>type immutableRef struct {
+   *cacheRecord
+   triggerLastUsed bool
+   descHandlers    DescHandlers
+}
+
+type mutableRef struct {
+   *cacheRecord
+   triggerLastUsed bool
+   descHandlers    DescHandlers
+}</code></pre>
+<p>这两个Ref都是cacheRecord的拓展。<br />
+为了进一步了解她们的工作原理，袁小白打开了<code>manager_test.go</code>，仔细研读了起来。</p>
+<p>经过一番摸索，袁小白终于弄清楚了她们之间的逻辑：<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/980b238b3dfa4dfe9ff2a13e58d1791d~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>原来cacheRecord只是用来存储基础数据的，里面有metadata来做持久化操作，这个metadata也挺有趣，值得研究一下。<br />
+而重点是mutableRef和immutableRef，这两个状态可以互相转换。<br />
+而谁需要这两个状态呢，答案是snapshotter，当snapshotter.Prepare的时候会产生mutableRef，也就是这个时候是可以修改的；mutableRef通过Commit可以转换成immutableRef的状态；最后immutableRef可以通过finalize，并commit到snapshotter。<br />
+（这又是一个containerd项目里的包，我们先不在这里展开，记录在下面的知识点里，以避免走进了免子洞，一个接一个，没完没了。）</p>
+<p>为什么要这样设计了，可以设想一下。<br />
+如果我要提高构建dockerfile的效率，像From这样的操作可能同时会进行好几个，很有可能他们都有一个能用的基础镜像，这在实际使用中，是很容易出现的。<br />
+如果每一个都独立构建，那肯定没有必要，浪费时间。<br />
+如果想要共用一个，就得进行缓存，这时需要有唯一标识，也就是我们前面看到的ID。<br />
+对于dockerfile里的下一个操作，前面的都可以认为是一个独立的基础镜像，在docker里，会把一个镜像的索引叫Ref，也就是索引。<br />
+与此同时，有时候需要提交准备好文件系统diff的信息，并挂载成一个文件系统，其中有docker推荐的overlay2文件系统，那我们就需要可以修改的ref，也就是mutableRef。<br />
+一旦有操作基于文件系统进行执行，那这时就需要变成不可修改状态, immutableRef。<br />
+必竞她们的数据信息是一致的，也就需要像cacheRecord这样的数据结构来承载相关信息，并支持缓存。</p>
+<p>哦，原来SourceOp执行的结果就是准备好snapshotter，也就是快照，这个快照可以为接下来的ExecOp提供rootfs相关的服务支持。</p>
+<p>那ExecOp的CacheMap和Exec又是干什么的呢？<br />
+有点小期待呢！</p>
+<h3>新的知识点</h3>
+<p>在CacheMap中，当我们拉取manifests的时候，我们用的是containerd提供的库。<br />
+在上面我们又涉及到OCI中image相关的一些概念，像diffid, chainid, desc等等。<br />
+我们都简化的理解为image的领域语言，也就是出现在image上下文里的实体或值对象。<br />
+后续会帮大家把containerd, oci相关的源码解读安排上。<br />
+下面做一个记录。</p>
+<ul>
+<li>Containerd</li>
+<li>snapshotter</li>
+<li>OCI</li>
+</ul>
+<h1 id="execop">ExecOp</h1>
+<p>SourceOp执行完毕后，会触发ExecOp同样的操作，一个是CacheMap，另一个则是Exec。</p>
+<h2 id="execop-cachemap">ExecOp CacheMap</h2>
+<pre class="golang"><code>func (e *execOp) CacheMap(ctx context.Context, g session.Group, index int) (*solver.CacheMap, bool, error) {
+   op := cloneExecOp(e.op)
+   ...
+   dt, err := json.Marshal(struct {
+      Type    string
+      Exec    *pb.ExecOp
+      OS      string
+      Arch    string
+      Variant string `json:&quot;,omitempty&quot;`
+   }{
+      Type:    execCacheType,
+      Exec:    &amp;op,
+      OS:      p.OS,
+      Arch:    p.Architecture,
+      Variant: p.Variant,
+   })
+   if err != nil {
+      return nil, false, err
+   }
+
+   cm := &amp;solver.CacheMap{
+      Digest: digest.FromBytes(dt),
+      Deps: make([]struct {
+         Selector          digest.Digest
+         ComputeDigestFunc solver.ResultBasedCacheFunc
+         PreprocessFunc    solver.PreprocessFunc
+      }, e.numInputs),
+   }
+   deps, err := e.getMountDeps()
+   ...
+   return cm, true, nil
+}</code></pre>
+<p>相对SourceOp的CacheMap，ExecOp的相对简单，需要我们关注的是这里多了一个<code>e.getMountDeps()</code>:</p>
+<pre class="golang"><code>func (e *execOp) getMountDeps() ([]dep, error) {
+   deps := make([]dep, e.numInputs)
+   for _, m := range e.op.Mounts {
+      if m.Input == pb.Empty {
+         continue
+      }
+      if int(m.Input) &gt;= len(deps) {
+         return nil, errors.Errorf(&quot;invalid mountinput %v&quot;, m)
+      }
+
+      sel := m.Selector
+      if sel != &quot;&quot; {
+         sel = path.Join(&quot;/&quot;, sel)
+         deps[m.Input].Selectors = append(deps[m.Input].Selectors, sel)
+      }
+
+      if (!m.Readonly || m.Dest == pb.RootMount) &amp;&amp; m.Output != -1 { // exclude read-only rootfs &amp;&amp; read-write mounts
+         deps[m.Input].NoContentBasedHash = true
+      }
+   }
+   return deps, nil
+}</code></pre>
+<p>不一样的地方是e.op.Mounts，对于execOp来说，需要mounts，也就是挂载点，但这个mounts从哪儿来呢？<br />
+先不着争，我们带着这样的疑问继续看Exec。</p>
+<h2 id="execop-exec">ExecOp Exec</h2>
+<p>而这正是相对SourceOp较为复杂的地方：</p>
+<pre class="golang"><code>func (e *execOp) Exec(ctx context.Context, g session.Group, inputs []solver.Result) (results []solver.Result, err error) {
+   refs := make([]*worker.WorkerRef, len(inputs))
+   for i, inp := range inputs {
+      var ok bool
+      refs[i], ok = inp.Sys().(*worker.WorkerRef)
+      if !ok {
+         return nil, errors.Errorf(&quot;invalid reference for exec %T&quot;, inp.Sys())
+      }
+   }
+...
+}</code></pre>
+<p>通过inputs，也就是solver传入的解析结果，这里我们可以理解为sourceOp的执行结果，将执行好的immutableRef给传过来，为下面的挂载做准备：</p>
+<pre class="golang"><code>p, err := gateway.PrepareMounts(ctx, e.mm, e.cm, g, e.op.Meta.Cwd, e.op.Mounts, refs, func(m *pb.Mount, ref cache.ImmutableRef) (cache.MutableRef, error) {
+   desc := fmt.Sprintf(&quot;mount %s from exec %s&quot;, m.Dest, strings.Join(e.op.Meta.Args, &quot; &quot;))
+   return e.cm.New(ctx, ref, g, cache.WithDescription(desc))
+})</code></pre>
+<p>而<code>PrepareMounts</code>重点做的事情就是将ref和将要挂载的下标MountIndex对应上，因为很有可能要挂载多层ref，而在我们在例子中，我们只有一层，那就是SourceOp的immutableRef。<br />
+而这些操作都依赖于传入的<code>e.op.Mounts</code>，看来我们有必要再梳理一下op的来源了，以帮助进一步理解ExecOp到底是如何执行的。</p>
+<h3 id="op">op的生命周期</h3>
+<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/94c2ef07f6c94aff8f2a4a7b49002cb6~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<ul>
+<li>从将Dockerfile转换成llb.State开始，在State中，通过Output将Vertex进行关联，这里首次出现了Op，分别是SourceOp和ExecOp，他们主要是实现了Vertex接口。</li>
+<li>对于SourceOp最对应的Dockerfile信息就是id，也就是<code>From Foo</code>，让我们知道哪个是基础镜像。</li>
+<li>对于ExecOp较重要的信息就是root和mounts，root用于说明操作执行的根目录，而mounts则是具体说明要挂载的所有挂载点，以及源是什么。在我们的例子中，ExecOp的mount里，source代表的就是SourceOp.Output()，也就是源Vertex。这样我们就能得到Vertex的id，并通过cache manager查询到对应的cacheRecord了。</li>
+<li>接着，为了方便传输，我们将所有的state信息，转换成Definition进行存储，和传递。</li>
+<li>solver接收到信息后，又将Definition转换成了Edge，并用Vertex来通用表示不同的Op，而其中的Index则关联了ops.pb中的Op</li>
+<li>接着为了标准化Op，并用pipe关联执行，又转换成了sharedOp</li>
+<li>在pipe执行的过程中，通过resolverFunc，通过worker，转换成最后我们现在正在用的SourceOp和execOp</li>
+</ul>
+<p>以上就是op的来源和为什么现在长这个样子。<br />
+再结合上面CacheMap和Exec中出现的e.op.Mounts，这一下我们可以方便的理解了，ExecOp的mounts只有一个，就是在llb.State中的ExecOp的mounts，目标是根挂载点，源来自于SourceOp，这样就可以获取对应的ref了，这样我们就准备好了PrepareMounts的：</p>
+<pre class="golang"><code>p.OutputRefs = append(p.OutputRefs, MountRef{
+   MountIndex: i,
+   Ref:        active,
+})</code></pre>
+<p>这样我们就为Exec的运行，打好了文件系统的基础。</p>
+<h1 id="execop">ExecOp的运行时</h1>
+<p>通过传入的inputs，execOp可以准备好镜像索引refs，并准备好挂载点，并得到挂载好的<code>PreparedMounts</code>。<br />
+准备好后，我们就可以开始运行这个操作了：</p>
+<pre class="golang"><code>func (e *execOp) Exec(ctx context.Context, g session.Group, inputs []solver.Result) (results []solver.Result, err error) {
+   ...
+   p, err := gateway.PrepareMounts(ctx, e.mm, e.cm, g, e.op.Meta.Cwd, e.op.Mounts, refs, func(m *pb.Mount, ref cache.ImmutableRef) (cache.MutableRef, error) {
+      desc := fmt.Sprintf(&quot;mount %s from exec %s&quot;, m.Dest, strings.Join(e.op.Meta.Args, &quot; &quot;))
+      return e.cm.New(ctx, ref, g, cache.WithDescription(desc))
+   })
+   ...
+   meta := executor.Meta{
+      Args:           e.op.Meta.Args,
+      Env:            e.op.Meta.Env,
+      Cwd:            e.op.Meta.Cwd,
+      User:           e.op.Meta.User,
+      Hostname:       e.op.Meta.Hostname,
+      ReadonlyRootFS: p.ReadonlyRootFS,
+      ExtraHosts:     extraHosts,
+      Ulimit:         e.op.Meta.Ulimit,
+      CgroupParent:   e.op.Meta.CgroupParent,
+      NetMode:        e.op.Network,
+      SecurityMode:   e.op.Security,
+   }
+   ...
+   stdout, stderr := logs.NewLogStreams(ctx, os.Getenv(&quot;BUILDKIT_DEBUG_EXEC_OUTPUT&quot;) == &quot;1&quot;)
+   defer stdout.Close()
+   defer stderr.Close()
+
+   execErr := e.exec.Run(ctx, &quot;&quot;, p.Root, p.Mounts, executor.ProcessInfo{
+      Meta:   meta,
+      Stdin:  nil,
+      Stdout: stdout,
+      Stderr: stderr,
+   }, nil)
+   ...
+   return results, errors.Wrapf(execErr, &quot;process %q did not complete successfully&quot;, strings.Join(e.op.Meta.Args, &quot; &quot;))
+}</code></pre>
+<p>剩下的执行逻辑就不复杂了，先是为运行做好充分准备，聊了<code>p.ReadonlyRootFS</code>，其它的基本上都是用户传入和默认配置的数据，比如我要在在容器里执行<code>echo hello world</code>，那这个命令就会被打散，并放入<code>e.op.Meta</code>中。<br />
+准备好meta后，就要开始执行了，<code>e.exec.Run</code>就是真正的运行语句。<br />
+可以看见用到了<code>p.Root</code>和<code>p.Mounts</code>，提供了文件系统所有的信息，进一步佐证了我们之前的判断。<br />
+另外还传入了stdout和stderr，这个也好理解。<br />
+如果我们想将容器运行时的日志保存下来，那就可以传入这两个句柄，用来接收信息。</p>
+<p>流程是梳理完了，那exec是什么，又是怎么样实际运行的呢？<br />
+带着这个问题，袁小白又开始了探索与发现。<br />
+最先想到的，当然还是execOp被创建的地方：</p>
+<pre class="golang"><code>ops.NewExecOp(v, op, baseOp.Platform, w.CacheMgr, w.ParallelismSem, sm, w.WorkerOpt.Executor, w)</code></pre>
+<p>发现倒数第二个参数，就是Executor - <code>w.WorkerOpt.Execcutor</code>，这里的w，自然就是worker了。<br />
+看来先要弄清楚worker的来历了：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/f9c31102fea94da08a0200a264827ce6~tplv-k3u1fbpfcp-watermark.image?" /><br />
+经过查找，发现在runc_test.go文件中有相关的测试用例。<br />
+其中包含了如何创建worker:</p>
+<ul>
+<li>首先要准备好WorkerOpts，在这里面包含了很多其它的实例，像snapshotter factory用来创建快照；content store用来在本地存放镜像；还有metadata db用来存放cacheRecord的相关基础数据；而最吸个我们关注的就是runc executor，从命名来看，应该还有其它的executor</li>
+<li>接着拿着创建好的WorkerOpts，相当于worker的配置项，进行真正的实例化操作New Worker with opt</li>
+</ul>
+<p>创建是梳理清楚了，那对于我们的这个用例，这个executor又是从哪儿来，怎么配置的呢？</p>
+<h2 id="worker">Worker注册</h2>
+<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/0d7438e0ab64495f993608c1cc9c5be5~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>原来，在buildkitd启动的时候，main函数在创建controller - newController的时候，初始化了worker controller - newWorkerController，而worker controller通过执行遍历已注册的worker初始化函数，来真正的创建worker。<br />
+从图中可以看到，在真正运行main函数前，通过golang的init函数特性，我们提前将containerd workder和oci worker已经注册进去，并标明不同的优先级priority，在这里默认的worker是priority配置为0的oci。</p>
+<h2 id="worker">Worker实例化</h2>
+<pre class="golang"><code>func newWorkerController(c *cli.Context, wiOpt workerInitializerOpt) (*worker.Controller, error) {
+   wc := &amp;worker.Controller{}
+   nWorkers := 0
+   for _, wi := range workerInitializers {
+      ws, err := wi.fn(c, wiOpt)
+      ...
+   }
+   if nWorkers == 0 {
+      return nil, errors.New(&quot;no worker found, rebuild the buildkit daemon?&quot;)
+   }
+   defaultWorker, err := wc.GetDefault()
+   ...
+   return wc, nil
+}</code></pre>
+<p>原来，在遍历已注册的worker初始化函数后，在newWorkerController中的遍历<code>range workerInitializers</code>中，真正的初始化了这些worker。</p>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/96d0261def6c45a99465d2974de010f8~tplv-k3u1fbpfcp-watermark.image?" /><br />
+从上图可以看到，实际通过调用各worker的NewWorkOpt方法后，分别创建了runc ececutor，和containerd executor，根据配置，默认的是runc executor。</p>
+<p>那么我们可以回答最开始的那个问题了，<code>e.exec.Run</code>执行的到底是哪个运行时 - runc。</p>
+<p>进到executor包，我们果然找到了<code>executor/oci/runcexecutor/executor.go</code>，打开文件，大大的Run函数映入眼帘:</p>
+<pre class="golang"><code>func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, mounts []executor.Mount, process executor.ProcessInfo, started chan&lt;- struct{}) (err error) {
+   ...
+   err = w.run(runCtx, id, bundle, process)
+   ...
+}
+
+func (w *runcExecutor) run(ctx context.Context, id, bundle string, process executor.ProcessInfo) error {
+   if process.Meta.Tty {
+      return unsupportedConsoleError
+   }
+   _, err := w.runc.Run(ctx, id, bundle, &amp;runc.CreateOpts{
+      IO:      &amp;forwardIO{stdin: process.Stdin, stdout: process.Stdout, stderr: process.Stderr},
+      NoPivot: w.noPivot,
+   })
+   return err
+}</code></pre>
+<p>可以看到Run里面进行了一系列的配置，在上面代码中省略掉的有rootFSPath, uid, gid, sgids等等。<br />
+最后调用的run才是真正执行的地方，而这里面用到了<code>w.runc.Run</code>，发现原来是<code>runc &quot;github.com/containerd/go-runc&quot;</code>(实际上这个库是fork <a href="https://github.com/opencontainers/runc" class="uri">https://github.com/opencontainers/runc</a>)。<br />
+这里我们就不再展开。<br />
+（但保证后续把这个坑给填上，就在2022，还包括之前提到的containerd）</p>
+<p>到这里，execOp的执行周期也就弄明白了。</p>
+<h1 id="exporter">完美收关Exporter</h1>
+<p>SourceOp构建完后，就轮到了ExecOp。<br />
+现在所有的Op都执行完了，也就是我们的Edge都得到了遍历。</p>
+<p>还记得我们从哪儿来的吗？<br />
+让我们一起来回顾一下。<br />
+没错，jobs收到构建请求后，由scheduler将edge进行了dispatch，这时候edge会进行unpark操作。</p>
+<p>这里的关键是jobs, scheduler和unpark的配合：</p>
+<ul>
+<li>jobs存储了所有的inbounds和outgoing请求，管理整个构建事件的上下文。</li>
+<li>scheduler就像是一个事件总线，负责分发收到的dispatch事件。</li>
+<li>unpark则像是具体的事件处理中心，根据事件的状态和信息，对新的状态进行下一步的处理。</li>
+</ul>
+<p>那构建完成后，谁会收到并处理返回的结果呢？</p>
+<h2 id="exporter-1">Exporter</h2>
+<pre class="shell"><code>$ buildctl build ... --output type=image,name=docker.io/username/image,push=true</code></pre>
+<p>让我们回到用户命令的地方，没错，想要了解全貌，就得从头开始。<br />
+可以看到我们对输出output的要求是，以image类型进行输出，并以名字name为docker.io/username/image 的镜像进行推送到远端registry。</p>
+<p>解铃还须系铃人。<br />
+让我们回到<code>solver.Solve</code>:</p>
+<pre class="golang"><code>func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req frontend.SolveRequest, exp ExporterRequest, ent []entitlements.Entitlement) (*client.SolveResponse, error) {
+   j, err := s.solver.NewJob(id)
+   if err != nil {
+      return nil, err
+   }
+
+   defer j.Discard()
+
+   set, err := entitlements.WhiteList(ent, supportedEntitlements(s.entitlements))
+   if err != nil {
+      return nil, err
+   }
+   j.SetValue(keyEntitlements, set)
+
+   j.SessionID = sessionID
+
+   var res *frontend.Result
+   if s.gatewayForwarder != nil &amp;&amp; req.Definition == nil &amp;&amp; req.Frontend == &quot;&quot; {
+      ...
+   } else {
+      res, err = s.Bridge(j).Solve(ctx, req, sessionID)
+      ...
+   }
+   ...
+   eg, ctx2 := errgroup.WithContext(ctx)
+   res.EachRef(func(ref solver.ResultProxy) error {
+      eg.Go(func() error {
+         _, err := ref.Result(ctx2)
+         return err
+      })
+      return nil
+   })
+   ...
+   var exporterResponse map[string]string
+   if e := exp.Exporter; e != nil {
+      ...
+      if err := inBuilderContext(ctx, j, e.Name(), &quot;&quot;, func(ctx context.Context, _ session.Group) error {
+         exporterResponse, err = e.Export(ctx, inp, j.SessionID)
+         return err
+      }); err != nil {
+         return nil, err
+      }
+   }
+   ...
+   return &amp;client.SolveResponse{
+      ExporterResponse: exporterResponse,
+   }, nil
+}</code></pre>
+<p>通过<code>s.Bridge(j).Solve</code>解析，获取所有的ref解析结果<code>res.EachRef - ref.Result</code>，最后导出返回值<code>exporterResponse, err = e.Export(...)</code></p>
+<p>那这里的Export指的又是什么呢？让我们将这些点都连接起来，来讲讲Export的故事：<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/a53ca7440f8447558533e6328ebfde11~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<ul>
+<li>当用户的构建指令传递给命令行buildctl时，buildAction首先接收到信息，通过ParseOutput入口，将字符串信息解析成对应的数据结构，最终得到Type为image的ExportEntry并返回，这样命令行的解析工作就完成了。</li>
+<li>当前端client将解析命令传递给后端也就是<code>buildkitd</code>时，最先接收到相关信息的是control，并通过Solve方法，将信息传递给workerController</li>
+<li><p>如上一篇所述，workerController提前注册好可用worker的初始化函数，并初始化了worker实例，不过worker对应的主要有executor，并没有exporter，这是因为exporter更普遍，被安置在了base worker里，所以在Solve export的时候，实际提供服务的是：</p>
+<pre class="golang"><code>func (w *Worker) Exporter(name string, sm *session.Manager) (exporter.Exporter, error) {
+   switch name {
+   case client.ExporterImage:
+  return imageexporter.New(imageexporter.Opt{
+     Images:         w.ImageStore,
+     SessionManager: sm,
+     ImageWriter:    w.imageWriter,
+     RegistryHosts:  w.RegistryHosts,
+     LeaseManager:   w.LeaseManager,
+  })
+   ...
+}</code></pre></li>
+<li>在这里，我们得到了exporter的实例，也就是imageExporterInstance。</li>
+<li><p>最后，solver在调用exporter的Export方法时，实际提供服务的是imageExporterInstance实例</p>
+<pre class="golang"><code>func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source, sessionID string) (map[string]string, error) {
+   ...
+   if e.targetName != &quot;&quot; {
+  targetNames := strings.Split(e.targetName, &quot;,&quot;)
+  for _, targetName := range targetNames {
+     if e.opt.Images != nil {
+        ...
+        for _, sfx := range sfx {
+           img.Name = targetName + sfx
+           if _, err := e.opt.Images.Update(ctx, img); err != nil {
+              ...
+           }
+        }
+        tagDone(nil)
+        ...
+}
+     if e.push {
+        ...
+        if err := push.Push(ctx, e.opt.SessionManager, sessionID, mprovider, e.opt.ImageWriter.ContentStore(), desc.Digest, targetName, e.insecure, e.opt.RegistryHosts, e.pushByDigest, annotations); err != nil {
+           return nil, err
+        }
+     }
+  }
+  resp[&quot;image.name&quot;] = e.targetName
+   }
+   ...
+   return resp, nil
+}</code></pre>
+<p>根据用例传入的参数，targetName不为空，则需要存储和更新image，e.push状态也为真，会调用util里的push包来上传推送镜像。</p></li>
+</ul>
+<h2>系列完</h2>
+<h3>续</h3>
+<p>不知不觉已经看完了<code>buildctl build</code>的全构建流程。<br />
+要想完全理解，还需要更多的例子，以及一些对一些细节的补充说明，如metadata store, cache manager，等等。<br />
+其中关键的部分有SourceOp的snapshotter，ExecOp的runc容器运行时。<br />
+不过GitAction在这里挖好了坑，也一定会把这些坑填起来。<br />
+秉着<code>Talk is cheap, show me the code!</code>原则，手动撸一个容器全生命周期工具，也不是完全没有可能。</p>
+<p>一起期待吧！</p>
 <h1 id="moby-buildkit-">Moby Buildkit 源码读书笔记</h1>
 <p><img src="./img/dream.JPG" alt="Dream" /></p>
 </body>
