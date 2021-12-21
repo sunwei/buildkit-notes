@@ -9,16 +9,22 @@
   <!--[if lt IE 9]>
     <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
   <![endif]-->
-  <h1>Header</h1>
+  <h1>Moby Buildkit 源码读书笔记</h1>
 </head>
 <body>
-<h1 id="spec">Spec</h1>
-<h2 id="context">Context</h2>
-<p>A general domain topic of this writing</p>
-<h3 id="menu">Menu</h3>
+<h1>目录</h1>
 <ul>
 <li><a href="spec.md">Spec</a></li>
 <li><a href="1.md">研发效能</a></li>
+<li><a href="2.md">架构面纱</a></li>
+<li><a href="3.md">主线阅读</a></li>
+<li><a href="4.md">Buildkitd守护进程</a></li>
+<li><a href="5.md">Buildkitd守护进程的引擎</a></li>
+<li><a href="6.md">Buildkitd流程闭环</a></li>
+<li><a href="7.md">用户价值驱动架构设计</a></li>
+<li><a href="8.md">frontends模块</a></li>
+<li><a href="9.md">失踪的frontends</a></li>
+<li><a href="10.md">frontends发射器</a></li>
 <li><a href="content.md">Content</a></li>
 </ul>
 <h1>研发效能</h1>
@@ -56,6 +62,460 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 <p>Moby Buildkit项目，相对于Docker大哥项目较新，意味着学习曲线可控。<br />
 所提供的知识点，像容器的构建和运行，也正好可以给出目前较新的实践，和工具的用法。<br />
 就这样成为了天选之子，从此，主角光环加身。</p>
+<h1>架构面纱</h1>
+<p>又是周五的早上，阳光明媚。<br />
+袁小白走进四面是大白板，中间一台大电视的会议室，熟练的在会议系统上确认着时间。<br />
+他总是习惯提前五分钟来到会议室，提前准备着会议室环境和自己要分享的内容。<br />
+今天正好是他毕业后一周年的日子，早已习惯了公司的环境和氛围。</p>
+<p>打开电脑，看着自己准备的Buildkit调研笔记，让他有点紧张。<br />
+因为这是一周的例会，按习惯，大家会继续上次会议留下的主题 - 调研Moby Buildkit架构，而自己对于如何阅读这种大型开源项目源码也是头一回，一周的时间，也就够自己查看和了解一下如何学习源码，还没有涉及到真正的源码，这让他多少有点紧张。</p>
+<p>这时又走进两位同事，一位叫龙飞，团队的中坚力量。<br />
+另一位叫贾大智，是这个兴趣小组的发起者。<br />
+他们掐着点，不早也不晚，时间刚刚好。</p>
+<p>一进来，龙飞就对着袁小白打招呼：小白，还是这么早啊，给大家看看我准备的好东西，说着就已经坐在了离门最近的地方，直接分享自己的屏幕了。</p>
+<p>哎，着什么急，今天是小白入职一周年，咱们先恭喜一下他。<br />
+贾大智连忙提醒到。</p>
+<p>哈哈，你不说我差点忘了。<br />
+龙飞不好意思的摸着头，又马上阳光灿烂的祝贺着袁小白。</p>
+<p>大家嘻嘻哈哈的进了今天的主题 - Moby Buildkit架构分享。</p>
+<p>会议室电视上早就显示着龙飞的成果 - Moby Buildkit 流程图：</p>
+<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/4518c20177a142a7bce890e4c8843dac~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>看着这一屏都显示不完的超长流程图，袁小白一下楞住了。<br />
+要知道大家的起点都一样，都没有golang相关的项目经验，为什么龙飞这么快就能读懂源码，并将流程图给输理出来了，真是不敢想像。<br />
+从这周查看的源码阅读方法介绍中了解到，确实有一种方法，叫主线阅读法，就是根据你想了解的流程，快速梳理代码调用流程，以弄清楚大致的代码关系。<br />
+就像交朋友一样，先有一个大致的了解，然后再深入细节。<br />
+但这种方法难度较大，因为需要阅读者能将之前学过的知识融汇贯通，特别是编程语言相关的知识点。</p>
+<p>还有一种，就是问题驱动阅读法，通常是带着明确的目的去阅读源码，比如解决某个ISSUE，然后提PR（Pull Request）。<br />
+这种方法能高效的达到自己的目的。<br />
+但和我们这次阅读源码的需求有点不一样，我们需要的是了解整体结构，补充我们相关的领域知识，好为下一阶段 - PoC（Prove of Concept）做准备。</p>
+<p>袁小白的好奇心一下就补勾了起来，来不急细想，忙问道：龙飞，你是怎么在短短一周的时间里面，就梳理出了主流程时序图的？</p>
+<h1>主线阅读</h1>
+<p>龙飞将主流程，时序图分享在电视上后，就迫不及待的讲了起来。</p>
+<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/512ba41cd0fa44a7bf0ee65ded1d26f8~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>根据我们的Happy Path(是理想的工作流)，我们需要先关注镜像构建流程，也就是灰色的模块我们可以先不考虑。</p>
+<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/0f9d4f235afc4e62be4876df281fb97d~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>这就是我重点在过去一周里学习的主线。<br />
+我直接找到GitHub上的p<a href="https://github.com/moby/buildkit">源码</a>，就一头扎了进去。<br />
+哎，还别说，README第一张图，就是我需要去关注的主线：</p>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/5b18b33ff0c34933af8ead2a79a15564~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>通过第一行可以看出，用法很简单，将./example生成的内容，通过管道传给 <code>buildctl build</code>命令，就可以从远端获取镜像，并开始构建镜像了。</p>
+<p>顺着这个思路，我就先找到了<code>buildctl</code>命令行。<br />
+说着就打开了命令行终端，向我们展示了代码的位置：</p>
+<p><embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/b389ab1e88514a6780a86e011b908fc5~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>然后我就顺藤摸瓜，一步步的画起了时序图，当然还是先从命令行开始：</p>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8faaaf6cee4a4aad9d236128f2b668ba~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<h2 id="buildctl">buildctl</h2>
+<p>自然就是命令行本尊了，用的是一个第三方库，我还没来得急查看细节，不过看着用起来挺方便的</p>
+<h2 id="build">build</h2>
+<p>就是我们的构建命令行了，也就是上面所指的<code>buildkit build</code>，将入口函数注册到了命令行框架里，触发命令的时候就会被调用，这里主要做了几件事情：</p>
+<ul>
+<li>获取客户端实例 - client，我没记错的话，就是一个grpc client</li>
+<li>解析配置参数，从代码来看，可以指定output的形式，如tar包；还可以指定是否push构建好的镜像到远端registry</li>
+<li>获取缓存配置参数，这里的缓存我还没弄清楚到底是干什么用的，先略过</li>
+<li>从标准输入stdin读取llb.Definition，这个llb也不知道是什么缩写，但我猜类似于将Dockerfile解析好后的内部数据结构，在上面的例子中就是由<code>./example</code>shell脚本输出的内容</li>
+<li>最后用创建好的client，调用client.Solve方法来发起连接</li>
+</ul>
+<h2 id="client">client</h2>
+<p>提供多种client，如HTTP、GRPC，我们这里用的是GRPC。<br />
+然后由client发起连接请求。</p>
+<h2 id="solve">solve</h2>
+<p>这个文件主要做的事情就是发起真正的连接。<br />
+先初始化共享会话，在会话运行过程中，还进行了grpc hijack劫持，可能是要将无状态连接变成长连接，可能是出于交互的考虑吧，比如在容器运行的过程中产生的标准输出，需要回传给client，以供展示，这只是我的猜测，还没有验证。<br />
+最后调用<code>buildkitd</code>首护进程提供的控制器进行解析 - controller.Solve</p>
+<p>一口气说完后，停顿了会，看了看袁小白和贾大智，问道：目前为止，有什么问题吗？<br />
+看着两人好像没什么反应。<br />
+就接着说道，那我准备讲下一部分 - <code>buildkitd</code>守护进程了。</p>
+<h3>知识点</h3>
+<p>用来记录一些出现的知识点，以后会把这些知识点展开来介绍。</p>
+<ul>
+<li>grpc</li>
+<li>hijack</li>
+</ul>
+<h1 id="buildkitd">Buildkitd守护进程</h1>
+<p>书接前文。<br />
+说龙飞一口气介绍完了<code>Buildctl build</code>命令行的前半部分 - client的工作流程，看了眼没有反应的袁小白和贾大智。已经近不急待的准备讲解下一部分了 - Buildkitd。</p>
+<p>袁小白可能真的没有什么想说的，毕竟听起来好像没什么特殊的，就是一些新鲜词不停的蹦了出来，不过早就习惯了。<br />
+贾大智到是一副若有所思的样子，但看样子，好像也示意着继续往下讲。</p>
+<p>龙飞滚动了时序图，到了中间的部分。<br />
+停顿了一下，说道：这里可是花了我一点时间，因为在<code>buildkitd</code>启动后，初始化了好些大家伙。<br />
+这一下确实引起了另两个人的注意。</p>
+<p>看到袁小白若有所思，龙飞问道：小白是有什么问题吗？</p>
+<p>到不是什么大问题，就想问下为什么后面加个字母<code>d</code>，有什么含义吗？</p>
+<p>哦，这个啊，<code>d</code>是Daemon的首字母，在计算机领域中，翻译过来是守护进程的意思，指的是在后台进行的进程，用来接收请求用的。<br />
+像Linux的<code>initd</code>，还有CNCF（Cloud Native Computing Foundation）的<code>containerd</code>，都是按这个风格来命名的。龙飞笑着回答道。</p>
+<p>那好我们来看Buildkitd启动后，接收请求的部分先：</p>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/a788677ccb884d48b4d0c3d4758bbc6f~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<h2 id="buildkitd-1">buildkitd</h2>
+<p>就是刚说的守护进程，会在后台以进程的形式运行，接收发过来的请求。<br />
+启动的时候用的是<code>sudo</code>，也就是这个进程需要管理员权限。<br />
+创建了一个<code>control</code>实例，后面可以看到，接收和处理请求基本上都是这个控制器。<br />
+而且这里用的也是MVC模式。</p>
+<h2 id="control">control</h2>
+<p>为什么说控制器做了主要的工作呢。<br />
+因为守护进程启动后，正式解析一个请求时，控制器会做以下几项工作：</p>
+<ul>
+<li>获取<code>worker</code>，并且默认的是<code>runc</code>(容器运行时命令行工具)，并且会帮助指定<code>Exporter</code></li>
+<li>调用<code>Exporter</code>进行解析，并进行配置</li>
+<li>初始化<code>solver</code>，而这个求解器应该是我们重点需要关注的了</li>
+</ul>
+<p>看起来很简单，对不对，但当我继续往后梳理的时候，我不得不一次次的又重新回到这里。<br />
+因为golang里定义了接口后，会有很多不同的实现者，而我们的编缉器只能帮助我们索引到接口级别，并不能智能索引到实现者，这时我就需要在初始化的源头，特别关注一下这些默认的设置，费了我不少时间。<br />
+如果你们发现有什么好的编缉器插件，记得分享给我一下。</p>
+<p>这种情况到是不奇怪，面向接口编程时，编缉器是有些用不上力。<br />
+贾大智顺嘴说到。</p>
+<h3 id="moby-buildkit-5---buildkitd">下一篇：深入理解Moby Buildkit系列 #5 - Buildkitd守护进程的引擎</h3>
+<h3 id="-1">知识点</h3>
+<p>用来记录一些出现的知识点，以后会把这些知识点展开来介绍。</p>
+<ul>
+<li>MVC</li>
+<li>runc</li>
+</ul>
+<h1 id="buildkitd">Buildkitd守护进程的引擎</h1>
+<p>那为什么说这里是核心呢？<br />
+龙飞顿了顿，像是在整理思路。<br />
+是因为真正完成构建镜像的操作和对象都在这里面了</p>
+<h2 id="solver">solver</h2>
+<p>像我们之前提到的，在<code>buildkitd</code>启动后，<code>control</code>接收到请求后，会初始化很多实例，其中<code>solver</code>就是在这个时候构建成功的，这里有一个关键点就是这步操作还实例化了<code>jobs</code></p>
+<h2 id="jobs">jobs</h2>
+<p><code>jobs</code>是由一个个的<code>edge</code>构建任务组成的，从复数来看，应该会有多个。<br />
+可能是以<code>edge</code>为单位，将DAG-有向无环图，里所有的边都作为一个任务来处理，这样就方便管理了，但带来的挑战就是如何高效组织和执行这些任务呢。</p>
+<p>还没等龙飞接着往下说，袁小白就已经忍不住问道：不好意思，什么是DAG，图上也没看到啊。</p>
+<p>哦，这个啊，我看到这里面出现了<code>Vertex</code>， <code>Edge</code>，这通常都是在图数据结构的上下文里，而通常如果要解析某一特定语言(DSL - Domain Specific Language)时，都会用到DAG(Directed Acyclic Graph)，就像咱们大学里学的编泽原理里讲到的。</p>
+<p>哦。<br />
+虽然一下子想不起来了，但好像是有提到。<br />
+袁小白回应到。</p>
+<h2 id="scheduler">scheduler</h2>
+<p>刚才还说到编排任务呢。<br />
+这个<code>scheduler</code>就是干这个的，她会在<code>jobs</code>初始化的时候，就开始执行循环<code>s.loop</code>了，这样在<code>edge</code>相关的构建任务时，就可以<code>dispatch</code>分发出去了，由对应的<code>edge</code>实例去完成剩下的事情了。</p>
+<h2 id="bridge">bridge</h2>
+<p>那任务是由谁拆解的呢？<br />
+没错，正是<code>bridge</code>，当接收到解析请求<code>llbBridge.Solve</code>的时候，<code>bridge</code>会新建一个结果代<code>newResultProxy</code>理实例，这样就可以由这个代理去完成剩下的构建任务拆分了。<br />
+在<code>loadResult</code>的时候，加载<code>vertex edge</code>，这里是另一个关键点。<br />
+还记得前面<code>client</code>读取的是<code>llb.definition</code>，而这里取代的已经是<code>vertex</code>了，也就是说已经完成了转换。<br />
+再正式开始构建，传入的参数是<code>edge</code>，通过将任务加入到<code>jobs</code>中，由<code>scheduler</code>编排，最终由<code>edge</code>通过缓存策略<code>shareOp.CacheMap</code>来进行<code>op</code>的构建。</p>
+<p>这里有点绕，我还是没听懂。<br />
+袁小白挠着头说道。</p>
+<p>确实是的，如果想要了解的更详细，光看流程还是不够的，还得配合上数据结构，最好还有一些小例子。<br />
+现阶段先了解个大概，知道有这么回事就行了。<br />
+龙飞说。</p>
+<p>是的，我们先了解个全貌，然后再进行拆分，一个模块一个模块的详细了解。<br />
+贾大智也说道。</p>
+<h3 id="moby-buildkit-6---buildkitd">下一篇：深入理解Moby Buildkit系列 #6 - Buildkitd流程闭环</h3>
+<h3 id="-2">知识点</h3>
+<p>用来记录一些出现的知识点，以后会把这些知识点展开来介绍。</p>
+<ul>
+<li>DAG, Vertex, Edge</li>
+<li>DSL</li>
+</ul>
+<h1 id="buildkitd">Buildkitd流程闭环</h1>
+<p>说完代码阅读思路后，龙飞将时序图向右边滑了滑。</p>
+<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/86f8dca04940460eb4c4b20577d29673~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>剩下的流程就是<code>OP - Operation</code>如何构建的过程，这里的<code>OP</code>，指的是由<code>Dockerfile</code>解析过后，需要执行的操作。<br />
+比如：<code>FRAOM UBUNTU:14.04</code>，这个会被理解为<code>Source OP</code>；而<code>RUN ls</code>则为被解析成<code>Exec OP</code>。<br />
+不过具体怎么实现的数据转换，我还没来得急花时间整理。</p>
+<p>先说<code>source ops</code></p>
+<h2 id="source">source</h2>
+<p>可以理解为解析到了关键字<code>FROM</code>，可以想像的是，为了高效完成伤。<br />
+我们需要缓存，如果缓存命中，那就可以直接使用，如果没有，就需要从远端去取。<br />
+这里的对应的是<code>source manager</code>和<code>Puller</code>。<br />
+前者就是资源管理器，里面会用<code>cacheKey</code>对资源进行索引，如果没有缓存，就需要通过<code>pull</code>，去取镜像的<code>Manifest</code>制品清单信息，那这个又要说到<code>Image Bundle</code>了，后面我们可以参考<a href="https://github.com/opencontainers">OCI</a>相应的说明。</p>
+<h2 id="puller">Puller</h2>
+<p>因为制品清单里很多信息，并且都是可以并行执行的，所以<code>buildkit</code>直接用的是<a href="https://github.com/containerd">containerd</a>的拉取器，并没有所有的轮子都自己造。</p>
+<p>这些执行完后<code>solver</code>会调用<code>exporter</code>，通过<code>cm.Differ</code>缓存管理器的differ，取差集，最终生成变更后的layer。<br />
+最后会调用<code>client.Response</code>，返回请求结果。</p>
+<p>这差不多就是完整的流程了。</p>
+<h2>全流程</h2>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/78e99c6f661541f683b70bffe4e48f98~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>简单来回顾一下：</p>
+<ol>
+<li>用户调用<code>buildctl</code>命令行，运行<code>build</code>命令，并传入解析好的<code>Dockerfile</code>，这里并不是<code>Dockerfile</code>的字符流，而是解析过后的<code>llb.Definition</code></li>
+<li>客户端<code>client</code>会用<code>solver</code>向<code>buildkitd</code>守护进程发送grpc网络请求</li>
+<li>守护进程需要提前启动，以做好为网络请求提供服务的准备</li>
+<li><code>control</code>是真正的服务组织者，会提前初始化好所需要对象，像<code>worker</code>，<code>exporter</code>，等等</li>
+<li><code>solver</code>是真正的重点所在，需要高效运行构建任务，那需要考虑如何编排任务，设置好缓存策略</li>
+<li>在<code>scheduler</code>的协调下，最后面向一个个的<code>operation</code>，进行具体的任务执行，其中<code>source op</code>是而向资源的，目的就是准备好资源；而<code>exec op</code>，则是负责具体执行任务的</li>
+<li>最终将所有操作处理的结果取差异，生成layer，计算<code>blob chain</code>块链索引后，进行持久化</li>
+<li>返回请求<code>response</code>响应</li>
+</ol>
+<p>一口气说完后，龙飞吸了口气，好像刚才耗费了大量的体力。<br />
+然后习惯性的问了句：大家还有什么问题吗？</p>
+<p>袁小白，脑子还在抓紧运行中，没来得急想还有什么问题。</p>
+<p>到是贾大智的声音响了起来。</p>
+<p>讲的不错，我有两个问题：</p>
+<ul>
+<li>一个<code>OP</code>到哪一步执行完的？比如<code>source op</code>，这里只看到了<code>puller</code>下载所需的<code>bundle</code>资源文件，但没看到下载完后干了什么？</li>
+<li><code>buildkit</code>这个新工具的业务价值是什么？为什么要重新写一个呢？</li>
+</ul>
+<p>第一个问题到是和技术相关，龙飞想了想，确实这一部分在时序图里没有呈现出来，不过接下来可以花时间了解下。<br />
+这第二个问题到是没想过，不过应该是什么大问题。<br />
+龙飞把自己对于这两个问题的想法说了出来，大家也都觉得这两块可以花时间再研究一下。</p>
+<p>袁小白到是不觉得这两个是什么大问题，已经很厉害了吧！</p>
+<p>我也找到些关于架构的资料。<br />
+当袁步白就贾大智的不尽人情嘟囔时，贾大智的声音响了起来。</p>
+<h3 id="moby-buildkit-7---">下一篇：深入理解Moby Buildkit系列 #7 - 用户价值驱动架构设计</h3>
+<h3 id="-3">知识点</h3>
+<p>用来记录一些出现的知识点，以后会把这些知识点展开来介绍。</p>
+<ul>
+<li>OCI</li>
+<li>Image Manifest</li>
+<li>Containerd</li>
+</ul>
+<h1>用户价值驱动架构设计</h1>
+<p>听着贾大智的问题：<br />
+<strong><code>buildkit</code>这个新工具的业务价值是什么？为什么要重新写一个呢？</strong></p>
+<p>袁小白的内心还是有一点拒绝的。<br />
+心想，啥也没干，整天就会提问题，还都是这些看起来和技术没啥关系的问题。<br />
+有本事上代码啊。<br />
+心里正嘀咕着。<br />
+耳朵里响起了贾大智的声音：我这一周也看了些资料，我从我的视角来说一下我对架构的理解。</p>
+<p>我和龙飞一样，我也去看了下<a href="https://github.com/moby/buildkit">源码库</a>，发现提交次数最多的是这位作者 - <a href="https://github.com/tonistiigi">Tõnis Tiigi</a>，名字不会念，就用谷歌翻译识别了下，原来是爱沙尼亚语，大致发间是&quot;托尼斯 提gi&quot;，为了方便，我们就叫他T神吧。</p>
+<p>龙飞和袁小白都一齐点着脑袋，表示赞同。</p>
+<p>贾大智接着说道。<br />
+然后我就去搜了下关键字<code>Moby buildkit architecture design</code>。<br />
+就发现了这篇文章，准确的说是这个<code>issue</code> - <a href="https://github.com/moby/moby/issues/32925">moby issue 32925</a>。<br />
+原来这个就是最早提出问题和介绍架构理念的<code>issue</code>，与其说<code>issue</code>，我更愿意称之为架构提议草案。</p>
+<p>细节大家可以会后去看，我先说一下我的理解。</p>
+<h2>解决的问题</h2>
+<p>下一代 <code>docker build</code>命令行工具。<br />
+因为现在的工具，只能一个文件一个文件的构件，还都是<code>Dockerfile</code>，很多项目不只一个构建文件，有的有多个构建文件，并且相互之间有依赖，这些需求，目前的工具都满足不了。<br />
+还有一点，就是慢，因为都是顺序执行，如果是大型项目，比如微服务，耗费的时间没法忍耐。</p>
+<p>而新一代的工具，正是要解决这些问题。<br />
+用并行构建的方式，让用户可以自由定义前端描述语言，解析为统一标准操作集，来构建这些复杂需求的构建项目，并且可以满足多项目同时构建。</p>
+<h2>架构目标</h2>
+<p>其中一个主要的目标，就是将构建的前端和后端进行分离。<br />
+前端指的是，用户对于构建步骤的定义。<br />
+后端指的是，用最高效的方式，来构建通用操作集(low-level description of the build operations)。</p>
+<p>不是一个随意的任务执行者。<br />
+而是一个长运行服务，用来解决将源码构建为人工制品的问题，并且以一种独立、便携、可重复和最高效的方式。</p>
+<h2>重要模块</h2>
+<p>总共有八个模块。</p>
+<h3 id="sources">sources</h3>
+<p>资源模块，用来从远端获取数据。<br />
+如<code>From ubuntu:14.04</code>，获取基础镜像。</p>
+<h3 id="frontends">frontends</h3>
+<p>获取用用户定义好的构建信息，就像龙飞说的<code>./example | buildctl build</code>命令。<br />
+用于转换成统一的后端标准构建操作集。<br />
+这里要强调的是<code>Dockerfile</code>是所支持前端的一种形式，那就意味着，大家可以自定义自己的前端语言，自己的<code>Container building DSL</code>。</p>
+<p>袁小白张大了嘴，想想还有点小激动呢。</p>
+<h3 id="solver-1">solver</h3>
+<p>找到最高效的构建策略，构建构建图谱，这里说的正是龙飞前面指的DAG（有向无环图），通过图所承载的所有信息，包括<code>Operation</code>和各操作之前的依赖关系，这样就为后面找到高效的方法提供了数据支持。<br />
+最后还可以将所有的操作结果，进行缓存，为后续的构建任务提供缓存服务。<br />
+那这个就厉害了，想想看，以后全世界的人都不用再重复构建，浪费算力了，这真是绿色环保的壮举啊！<br />
+实现这个底层逻辑，我猜是<code>cotent addressable</code>，指的就是对一个文件进行HASH求值，生成唯一标识，如果由这份文件拷贝出来的新文件，用同样的HASH算法，就可以得到同样的KEY，就不用自己再构建一遍了，嗯，理论是可行的。</p>
+<h3 id="worker">worker</h3>
+<p>运行容器的真正组件。<br />
+如用<code>OCI runc</code>运行容器。</p>
+<h3 id="exporter">exporter</h3>
+<p>将构建结果，根据导出配置，进行导出，如导出tar包，或者是zip包。</p>
+<h3 id="snapshots">snapshots</h3>
+<p>为构建操作提供文件系统服务，如在根文件系统<code>rootfs</code>。<br />
+这个涉及到LXC(linux container)技术。</p>
+<h3 id="cache-manager">cache manager</h3>
+<p>将最近的构建产出，中间结果，都可以进行缓存，为再次构建，提供高效保障。<br />
+这里不仅仅缓存关系型数据，还可以缓存blob块数据。</p>
+<h3 id="controlapi">controlAPI</h3>
+<p>用来将多个构建任务关联起来。<br />
+前面的多少还可以和龙飞说的对应上，这个好像没找到对应的流程，可能不在主时序图里吧。</p>
+<p>这就是我对这个项目的起源，和需要解决的问题 - 为用户提供的价值，以及最早设计的思路的理解。</p>
+<p>看了看时间，贾大智还没等大家提问。<br />
+说道：咱们接下来的方向就顺着主时序图和这些模块结合起来看吧，那下一次例会，咱们的主题就选<code>frontends</code>了。</p>
+<p>时间过得真快，但今天对于袁小白来说，真的是思路大开，原来，学习源码这么有挑战，但同时，也还挺有意思的。<br />
+加上两位好队友，感觉这事好像能成。<br />
+已经开始期待下一次的例会了。</p>
+<h1 id="frontends">frontends模块</h1>
+<p>想着上一次有关架构讨论的会议，袁小白因为自己没有帮上忙而闷闷不乐。<br />
+一心觉得龙飞也太厉害了，我什么时候能像龙飞一样就好了。<br />
+贾大智看起来好像只是会提问题，可看问题的角度，确实也值得学习。</p>
+<p>这一次要看模块的源码了，可得上点心，争取多贡献自己的一份力量。<br />
+周六因为和朋友一起踏青，所以没能抽出时间看源码。<br />
+周日可要好好看看了。<br />
+心里想着，就起了个大早，泡上一杯自己喜欢的绿茶，津津有味的看了起来。</p>
+<p>首先要将源码更新到最新：<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8104756393f14939b1ee29d6894e8319~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<blockquote>
+<p>最早看的时候是三月份，目前从最新的和大家一起来梳理</p>
+</blockquote>
+<p><code>frontends</code>这个控件在龙飞讲的时序图里好像没看到，但根据贾大智的描述。<br />
+会出现在<code>client</code>。<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/3ab084fd263d4cfa9bbe35dc0a5018ca~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<ul>
+<li>龙飞的时序图</li>
+</ul>
+<h3 id="frontends-1">frontends</h3>
+<p>获取用用户定义好的构建信息，就像龙飞说的<code>./example | buildctl build</code>命令。<br />
+用于转换成统一的后端标准构建操作集。<br />
+这里要强调的是<code>Dockerfile</code>是所支持前端的一种形式，那就意味着，大家可以自定义自己的前端语言，自己的<code>Container building DSL</code>。</p>
+<ul>
+<li>贾大智的理解</li>
+</ul>
+<p>那我们先顺藤摸瓜，从命令行<code>buildctl build</code>开始吧。</p>
+<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/026bcde32d42426cb66e15dbf14f887e~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>找到对应的buildctl的文件夹，并打开文件<code>main.go</code>，可以查看到以下代码结构：<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/7af2be59b1b046f6854b5ac0d427d830~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>看起来不算复杂，golang会在运行main函数前，执行init函数，且通过import可以看出，命令行工具用的是<a href="https://github.com/urfave/cli">urfave/cli</a>，版本v2有详细的<a href="https://github.com/urfave/cli/blob/master/docs/v2/manual.md">使用说明</a>。</p>
+<pre class="golang"><code>package main
+
+import (
+  &quot;os&quot;
+
+  &quot;github.com/urfave/cli/v2&quot;
+)
+
+func main() {
+  (&amp;cli.App{}).Run(os.Args)
+}</code></pre>
+<p>将系统参数传入cli.App实例，就可以运行了。</p>
+<p>顺着这个思路再来看buildctl源码，在main函数中，有以下代码：</p>
+<pre class="golang"><code>func main() {
+   ...
+   app := cli.NewApp()
+   app.Name = &quot;buildctl&quot;
+   app.Usage = &quot;build utility&quot;
+   app.Version = version.Version
+
+   defaultAddress := os.Getenv(&quot;BUILDKIT_HOST&quot;)
+   if defaultAddress == &quot;&quot; {
+      defaultAddress = appdefaults.Address
+   }
+
+   app.Flags = []cli.Flag{
+      ...
+      cli.IntFlag{
+         Name:  &quot;timeout&quot;,
+         Usage: &quot;timeout backend connection after value seconds&quot;,
+         Value: 5,
+      },
+   }
+
+   app.Commands = []cli.Command{
+      diskUsageCommand,
+      pruneCommand,
+      buildCommand,
+      debugCommand,
+      dialStdioCommand,
+   }
+
+   ...
+
+   handleErr(debugEnabled, app.Run(os.Args))</code></pre>
+<p>可以看出，和官方推荐的使用方法类似。</p>
+<ul>
+<li>先实例化命令行<code>buildctl</code></li>
+<li>然后设置一些<code>flag</code>，也就是命令行参数，</li>
+<li>接着在<code>app.Commands</code>里注册对应的子命令，其中我们就发现了<code>buildCommand</code>，这里也就是我们要去一探究竟的地方了</li>
+<li>最后传入参数并运行<code>app.Run(os.Args)</code></li>
+</ul>
+<p>看来看源码也不怎么难吗，看到有个好的开头，袁小白品了口绿茶，味道刚刚好。</p>
+<h1 id="frontends">失踪的frontends</h1>
+<p>袁小白感觉自己状态不错，准备一鼓作气，走通frontends流程。<br />
+还没等编缉器自动装好依赖，就迫不及待的出发了。</p>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/f741d8ae3b6342aaaa63bbc2d213e552~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>直接定位到<code>build</code>子命令，就发现这个子命令的入口函数就是<code>buildAction</code>:</p>
+<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/ce919201d89d42ceb833e3c65483c6f4~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<pre class="golang"><code>func buildAction(clicontext *cli.Context) error {
+   c, err := bccommon.ResolveClient(clicontext)
+   if err != nil {
+      return err
+   }
+
+   ...
+
+   eg, ctx := errgroup.WithContext(bccommon.CommandContext(clicontext))
+
+   solveOpt := client.SolveOpt{
+      Exports: exports,
+      // LocalDirs is set later
+      Frontend: clicontext.String(&quot;frontend&quot;),
+      // FrontendAttrs is set later
+      CacheExports:        cacheExports,
+      CacheImports:        cacheImports,
+      Session:             attachable,
+      AllowedEntitlements: allowed,
+   }
+
+   ...
+
+   var def *llb.Definition
+   if clicontext.String(&quot;frontend&quot;) == &quot;&quot; {
+      if fi, _ := os.Stdin.Stat(); (fi.Mode() &amp; os.ModeCharDevice) != 0 {
+         return errors.Errorf(&quot;please specify --frontend or pipe LLB definition to stdin&quot;)
+      }
+      def, err = read(os.Stdin, clicontext)
+      if err != nil {
+         return err
+      }
+      if len(def.Def) == 0 {
+         return errors.Errorf(&quot;empty definition sent to build. Specify --frontend instead?&quot;)
+      }
+   } else {
+      if clicontext.Bool(&quot;no-cache&quot;) {
+         solveOpt.FrontendAttrs[&quot;no-cache&quot;] = &quot;&quot;
+      }
+   }
+   ...
+   eg.Go(func() error {
+      ...
+      resp, err := c.Solve(ctx, def, solveOpt, progresswriter.ResetTime(mw.WithPrefix(&quot;&quot;, false)).Status())
+      ...
+      return nil
+   })
+
+   ...
+   return eg.Wait()
+}</code></pre>
+<p>这里的主要流程是：</p>
+<ul>
+<li>获取客户端client - <code>bccommon.ResolveClient(clicontext)</code></li>
+<li>准备好solveOpt，其中包含了Frontend</li>
+<li>判断命令行里是否有传入&quot;frontend&quot;，如果没有设置，就像龙飞举的例子<code>./example | buildctl build</code>，这时就从os.Stdin标准输入中读取数据，这里对应的是<code>def, err = read(os.Stdin, clicontext)</code>。如果有设置，就像在命令行使用说明里的<code>$ buildctl build --frontend dockerfile.v0 --opt target=foo --opt build-arg:foo=bar --local context=. --local dockerfile=. --output type=image,name=docker.io/username/image,push=true</code>，则看看是否有缓存相关的配置</li>
+<li>最后交由<code>c.Solve</code>统一处理</li>
+</ul>
+<p>嗯，目前为止还算清晰。<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8ead0111ae8646f1a511f7d9483195b2~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>开始进入到了client package下的solve.go。<br />
+可以看出第一个出现的<code>solve</code>，主要是判断，在参数中关于Frontend的配置情况，如果没有设计，那def就不能为空，也就是要从os.Stdin中读取；如果Frontend不为，像<code>dockerfile.v0</code>，那def就得为空，因为这时候不接受标准输入了，会从<code>--local dockerfile=.</code>中读取构建信息。</p>
+<p>可以注意到，下一步就是进入到了小写的<code>solve</code>这个函数，在golang里，是区分大小写的，也就是说这是两个函数。<br />
+并且golang认为大写开头的就相当于public函数，而小写开头的就是private函数，适应后感觉也挺方便。<br />
+<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/eb3a73d9b82c496997b6f2de9e7406b7~tplv-k3u1fbpfcp-watermark.image?" /><br />
+算上前面两个solve，这时第三个solve又出现了 - <code>c.controlClient().Solve(...)</code>。</p>
+<p>当我们直接跳转到第三个Solve时，来到了接口定义处：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2f84f3d2782443efbc36664a26f3323a~tplv-k3u1fbpfcp-watermark.image?" /><br />
+当全局搜索时，发现有很多solve，这可怎么办？<br />
+突然想起这是由<code>c.controlClient()</code>所返回对象的方法，那就先看看究竟返回了个啥：<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2d55f9c351cb4aaf9e48c99cfd9805d5~tplv-k3u1fbpfcp-watermark.image?" /><br />
+原来到了这里，那就是说这个结构体实现了solve方法，果不其然：<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/e6f8e9c1ddea49a3bcfe92302d10a1d3~tplv-k3u1fbpfcp-watermark.image?" /><br />
+再一次出现了solve，这一次还是个远程调用<code>c.cc.Invoke(ctx, &quot;/moby.buildkit.v1.Control/Solve&quot;, ...)</code></p>
+<p>这下好了，上哪儿找c.cc去，frontend还不见了。<br />
+看着凉了的茶水，肚子也咕咕叫了几下。<br />
+那就明天去问问龙飞吧，看看有什么建议。</p>
+<h1 id="frontends">frontends发射器</h1>
+<p>本来想着周一就找龙飞好好咨询一下，可好巧不巧，这两天龙飞都很忙。<br />
+因为有一个新的项目启动了，正在准备项目的iteration 0（迭代零）。<br />
+好容易等到周三，龙习终于有时间了，迫不急待的问道：</p>
+<p>我顺着<code>buildctl build</code>命令，看到了<code>control.pb.go</code>文件里的c.cc.Invoke，后面编辑器就没法帮我定位到下面的函数了，不知道从哪儿查起了。</p>
+<p>龙飞听完，想了想，很快说到，应该是前端的请求最后一步了，发出GRPC请求。<br />
+接下来就是<code>buildkitd</code>接收到请求，开始处理了。<br />
+说着打开源码，快速找到<code>buildkit/cmd/buildkitd/main.go</code>的<code>main</code>函数的GRPC服务相关的代码：<br />
+<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/542be32300e24c748ec3de390586e9a1~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>就像代码里提到的，先创建一个controller，然后将controller注册到服务，最后启动服务，当然这里是GRPC服务。这样就可以接收并处理前端的请求。<br />
+从前面得知，请求的链接是<code>moby.buildkit.v1.Control/Solve</code>，那我们可以猜测一下这个服务地址是需要提前注册的，对吧。<br />
+那我们看看controller.Register(...)这个操作。</p>
+<p>随着一步步跳转，果然&quot;Solve&quot;这个方法出现在眼前：<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/62c8e60e2fab4f3581d3016c8959df94~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>并且显示的处理方法是<code>_Control_Solve_Handler</code>：<br />
+<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/f2fc67b39c704a079de78c4b2ee18f7f~tplv-k3u1fbpfcp-watermark.image?" /><br />
+这里代码显示的是会找到server，并调用<code>Solve</code>方法。</p>
+<p>然后我们再回过头来看看<code>newController</code>所创建的对象，因这这个对象被注册到了server里，那我们现在去确认一下，这个对象是否有<code>Solve</code>方法，如果要保险，可以再确认一下其它的方法，像<code>DiskUsage, ListWorkers</code>。</p>
+<p>经过简单的查找，果然：<br />
+<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2fd008faf3f44330b4cab02641461995~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>controller的方法里，确实包含了我们想要的对象，终于连接上了，看来可以从这里再继续探索了。</p>
+<p>袁小白一边感谢着龙飞，一边不禁心生敬意。</p>
+<p>真是山穷水尽疑无路，柳暗花明又一春。</p>
+<p>看源码的体验就是这样，碰到问题，解决问题，再碰到问题，再解决问题，如此反复。<br />
+这也是大家不喜欢看别人源码的原因，很多时候，比起看别人的代码，更想自己从头写一份。</p>
+<p>袁小白下一次又会卡在哪儿呢？<br />
+不用担心，很快就会看到的。</p>
 <h1 id="moby-buildkit-">Moby Buildkit 源码读书笔记</h1>
 <p><img src="./img/dream.JPG" alt="Dream" /></p>
 </body>
