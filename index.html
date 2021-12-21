@@ -79,7 +79,7 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 我们从一个假设开始：</p>
 <p><strong>假设有一个开发者友好的高效能PaaS平台，可以让我们专注在核心业务问题上，那这个平台应该长什么样？</strong></p>
 <p>为了让开发者专注在核心业务上，我们设想她可能长这个样子：</p>
-<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/cfd65858176c4d90b3c01430c6567543~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/掘金11%20Happy%20Path.png" alt="掘金11 Happy Path.png" /></p>
 <p>作为开发者，假设我们的核心业务就是用golang输出“hello, world!”，那我们所有要做的事情就只有<code>git push</code>。</p>
 <p>如果想要做到这一点，我们想用一个完全自主的试验性项目，结合高效能所推荐的实践，慢慢让这个高效能变得不再那么神秘，看得见，摸得着。</p>
 <p>Moby Buildkit项目，相对于Docker大哥项目较新，意味着学习曲线可控。<br />
@@ -102,7 +102,7 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 龙飞不好意思的摸着头，又马上阳光灿烂的祝贺着袁小白。</p>
 <p>大家嘻嘻哈哈的进了今天的主题 - Moby Buildkit架构分享。</p>
 <p>会议室电视上早就显示着龙飞的成果 - Moby Buildkit 流程图：</p>
-<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/4518c20177a142a7bce890e4c8843dac~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /></p>
 <p>看着这一屏都显示不完的超长流程图，袁小白一下楞住了。<br />
 要知道大家的起点都一样，都没有golang相关的项目经验，为什么龙飞这么快就能读懂源码，并将流程图给输理出来了，真是不敢想像。<br />
 从这周查看的源码阅读方法介绍中了解到，确实有一种方法，叫主线阅读法，就是根据你想了解的流程，快速梳理代码调用流程，以弄清楚大致的代码关系。<br />
@@ -114,19 +114,19 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 <p>袁小白的好奇心一下就补勾了起来，来不急细想，忙问道：龙飞，你是怎么在短短一周的时间里面，就梳理出了主流程时序图的？</p>
 <h1>主线阅读</h1>
 <p>龙飞将主流程，时序图分享在电视上后，就迫不及待的讲了起来。</p>
-<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/512ba41cd0fa44a7bf0ee65ded1d26f8~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /></p>
 <p>根据我们的Happy Path(是理想的工作流)，我们需要先关注镜像构建流程，也就是灰色的模块我们可以先不考虑。</p>
-<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/0f9d4f235afc4e62be4876df281fb97d~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/11HappyPathbuild.jpg" alt="掘金11 Happy Path - build.jpg" /></p>
 <p>这就是我重点在过去一周里学习的主线。<br />
 我直接找到GitHub上的p<a href="https://github.com/moby/buildkit">源码</a>，就一头扎了进去。<br />
 哎，还别说，README第一张图，就是我需要去关注的主线：</p>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/5b18b33ff0c34933af8ead2a79a15564~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/bk-example.png" alt="bk-example.png" /></p>
 <p>通过第一行可以看出，用法很简单，将./example生成的内容，通过管道传给 <code>buildctl build</code>命令，就可以从远端获取镜像，并开始构建镜像了。</p>
 <p>顺着这个思路，我就先找到了<code>buildctl</code>命令行。<br />
 说着就打开了命令行终端，向我们展示了代码的位置：</p>
-<p><embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/b389ab1e88514a6780a86e011b908fc5~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/cmd.png" alt="cmd.png" /></p>
 <p>然后我就顺藤摸瓜，一步步的画起了时序图，当然还是先从命令行开始：</p>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8faaaf6cee4a4aad9d236128f2b668ba~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Buildctl%20build%20cmd.jpg" alt="Buildctl build - cmd.jpg" /></p>
 <h2 id="buildctl">buildctl</h2>
 <p>自然就是命令行本尊了，用的是一个第三方库，我还没来得急查看细节，不过看着用起来挺方便的</p>
 <h2 id="build">build</h2>
@@ -167,7 +167,7 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 <p>哦，这个啊，<code>d</code>是Daemon的首字母，在计算机领域中，翻译过来是守护进程的意思，指的是在后台进行的进程，用来接收请求用的。<br />
 像Linux的<code>initd</code>，还有CNCF（Cloud Native Computing Foundation）的<code>containerd</code>，都是按这个风格来命名的。龙飞笑着回答道。</p>
 <p>那好我们来看Buildkitd启动后，接收请求的部分先：</p>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/a788677ccb884d48b4d0c3d4758bbc6f~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Buildctl%20build%20buildkitd.jpg" alt="Buildctl build - buildkitd.jpg" /></p>
 <h2 id="buildkitd-1">buildkitd</h2>
 <p>就是刚说的守护进程，会在后台以进程的形式运行，接收发过来的请求。<br />
 启动的时候用的是<code>sudo</code>，也就是这个进程需要管理员权限。<br />
@@ -232,7 +232,7 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 </ul>
 <h1 id="buildkitd">Buildkitd流程闭环</h1>
 <p>说完代码阅读思路后，龙飞将时序图向右边滑了滑。</p>
-<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/86f8dca04940460eb4c4b20577d29673~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Buildctl%20build%20op.jpg" alt="Buildctl build - op.jpg" /></p>
 <p>剩下的流程就是<code>OP - Operation</code>如何构建的过程，这里的<code>OP</code>，指的是由<code>Dockerfile</code>解析过后，需要执行的操作。<br />
 比如：<code>FRAOM UBUNTU:14.04</code>，这个会被理解为<code>Source OP</code>；而<code>RUN ls</code>则为被解析成<code>Exec OP</code>。<br />
 不过具体怎么实现的数据转换，我还没来得急花时间整理。</p>
@@ -248,7 +248,7 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 最后会调用<code>client.Response</code>，返回请求结果。</p>
 <p>这差不多就是完整的流程了。</p>
 <h2>全流程</h2>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/78e99c6f661541f683b70bffe4e48f98~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /></p>
 <p>简单来回顾一下：</p>
 <ol>
 <li>用户调用<code>buildctl</code>命令行，运行<code>build</code>命令，并传入解析好的<code>Dockerfile</code>，这里并不是<code>Dockerfile</code>的字符流，而是解析过后的<code>llb.Definition</code></li>
@@ -353,14 +353,14 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 周六因为和朋友一起踏青，所以没能抽出时间看源码。<br />
 周日可要好好看看了。<br />
 心里想着，就起了个大早，泡上一杯自己喜欢的绿茶，津津有味的看了起来。</p>
-<p>首先要将源码更新到最新：<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8104756393f14939b1ee29d6894e8319~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>首先要将源码更新到最新：</p>
+<p><img src="./img/Screen%20Shot%202021-11-09%20at%207.06.55%20PM.png" alt="版本信息（最早看的时候是三月份，目前从最新的和大家一起来梳理）" /></p>
 <blockquote>
 <p>最早看的时候是三月份，目前从最新的和大家一起来梳理</p>
 </blockquote>
 <p><code>frontends</code>这个控件在龙飞讲的时序图里好像没看到，但根据贾大智的描述。<br />
 会出现在<code>client</code>。<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/3ab084fd263d4cfa9bbe35dc0a5018ca~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /></p>
 <ul>
 <li>龙飞的时序图</li>
 </ul>
@@ -372,9 +372,9 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 <li>贾大智的理解</li>
 </ul>
 <p>那我们先顺藤摸瓜，从命令行<code>buildctl build</code>开始吧。</p>
-<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/026bcde32d42426cb66e15dbf14f887e~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/cmd.png" alt="cmd" /></p>
 <p>找到对应的buildctl的文件夹，并打开文件<code>main.go</code>，可以查看到以下代码结构：<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/7af2be59b1b046f6854b5ac0d427d830~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Screen%20Shot%202021-11-09%20at%207.22.01%20PM.png" alt="Screen Shot 2021-11-09 at 7.22.01 PM.png" /></p>
 <p>看起来不算复杂，golang会在运行main函数前，执行init函数，且通过import可以看出，命令行工具用的是<a href="https://github.com/urfave/cli">urfave/cli</a>，版本v2有详细的<a href="https://github.com/urfave/cli/blob/master/docs/v2/manual.md">使用说明</a>。</p>
 <pre class="golang"><code>package main
 
@@ -432,9 +432,9 @@ func main() {
 <h1 id="frontends">失踪的frontends</h1>
 <p>袁小白感觉自己状态不错，准备一鼓作气，走通frontends流程。<br />
 还没等编缉器自动装好依赖，就迫不及待的出发了。</p>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/f741d8ae3b6342aaaa63bbc2d213e552~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Screen%20Shot%202021-11-10%20at%207.47.08%20PM.png" alt="Screen Shot 2021-11-10 at 7.47.08 PM.png" /></p>
 <p>直接定位到<code>build</code>子命令，就发现这个子命令的入口函数就是<code>buildAction</code>:</p>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/ce919201d89d42ceb833e3c65483c6f4~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Screen%20Shot%202021-11-10%20at%207.49.07%20PM.png" alt="Screen Shot 2021-11-10 at 7.49.07 PM.png" /></p>
 <pre class="golang"><code>func buildAction(clicontext *cli.Context) error {
    c, err := bccommon.ResolveClient(clicontext)
    if err != nil {
@@ -494,20 +494,20 @@ func main() {
 <li>最后交由<code>c.Solve</code>统一处理</li>
 </ul>
 <p>嗯，目前为止还算清晰。<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8ead0111ae8646f1a511f7d9483195b2~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Screen%20Shot%202021-11-10%20at%208.04.19%20PM.png" alt="Screen Shot 2021-11-10 at 8.04.19 PM.png" /></p>
 <p>开始进入到了client package下的solve.go。<br />
 可以看出第一个出现的<code>solve</code>，主要是判断，在参数中关于Frontend的配置情况，如果没有设计，那def就不能为空，也就是要从os.Stdin中读取；如果Frontend不为，像<code>dockerfile.v0</code>，那def就得为空，因为这时候不接受标准输入了，会从<code>--local dockerfile=.</code>中读取构建信息。</p>
 <p>可以注意到，下一步就是进入到了小写的<code>solve</code>这个函数，在golang里，是区分大小写的，也就是说这是两个函数。<br />
 并且golang认为大写开头的就相当于public函数，而小写开头的就是private函数，适应后感觉也挺方便。<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/eb3a73d9b82c496997b6f2de9e7406b7~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-10%20at%208.09.36%20PM.png" alt="Screen Shot 2021-11-10 at 8.09.36 PM.png" /><br />
 算上前面两个solve，这时第三个solve又出现了 - <code>c.controlClient().Solve(...)</code>。</p>
 <p>当我们直接跳转到第三个Solve时，来到了接口定义处：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2f84f3d2782443efbc36664a26f3323a~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-10%20at%208.13.19%20PM.png" alt="Screen Shot 2021-11-10 at 8.13.19 PM.png" /><br />
 当全局搜索时，发现有很多solve，这可怎么办？<br />
 突然想起这是由<code>c.controlClient()</code>所返回对象的方法，那就先看看究竟返回了个啥：<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2d55f9c351cb4aaf9e48c99cfd9805d5~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-10%20at%208.15.52%20PM.png" alt="Screen Shot 2021-11-10 at 8.15.52 PM.png" /><br />
 原来到了这里，那就是说这个结构体实现了solve方法，果不其然：<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/e6f8e9c1ddea49a3bcfe92302d10a1d3~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-10%20at%208.17.01%20PM.png" alt="Screen Shot 2021-11-10 at 8.17.01 PM.png" /><br />
 再一次出现了solve，这一次还是个远程调用<code>c.cc.Invoke(ctx, &quot;/moby.buildkit.v1.Control/Solve&quot;, ...)</code></p>
 <p>这下好了，上哪儿找c.cc去，frontend还不见了。<br />
 看着凉了的茶水，肚子也咕咕叫了几下。<br />
@@ -520,18 +520,18 @@ func main() {
 <p>龙飞听完，想了想，很快说到，应该是前端的请求最后一步了，发出GRPC请求。<br />
 接下来就是<code>buildkitd</code>接收到请求，开始处理了。<br />
 说着打开源码，快速找到<code>buildkit/cmd/buildkitd/main.go</code>的<code>main</code>函数的GRPC服务相关的代码：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/542be32300e24c748ec3de390586e9a1~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Screen%20Shot%202021-11-11%20at%207.48.25%20PM.png" alt="Screen Shot 2021-11-11 at 7.48.25 PM.png" /></p>
 <p>就像代码里提到的，先创建一个controller，然后将controller注册到服务，最后启动服务，当然这里是GRPC服务。这样就可以接收并处理前端的请求。<br />
 从前面得知，请求的链接是<code>moby.buildkit.v1.Control/Solve</code>，那我们可以猜测一下这个服务地址是需要提前注册的，对吧。<br />
 那我们看看controller.Register(...)这个操作。</p>
 <p>随着一步步跳转，果然&quot;Solve&quot;这个方法出现在眼前：<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/62c8e60e2fab4f3581d3016c8959df94~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Screen%20Shot%202021-11-11%20at%208.00.34%20PM.png" alt="Screen Shot 2021-11-11 at 8.00.34 PM.png" /></p>
 <p>并且显示的处理方法是<code>_Control_Solve_Handler</code>：<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/f2fc67b39c704a079de78c4b2ee18f7f~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-11%20at%208.02.33%20PM.png" alt="Screen Shot 2021-11-11 at 8.02.33 PM.png" /><br />
 这里代码显示的是会找到server，并调用<code>Solve</code>方法。</p>
 <p>然后我们再回过头来看看<code>newController</code>所创建的对象，因这这个对象被注册到了server里，那我们现在去确认一下，这个对象是否有<code>Solve</code>方法，如果要保险，可以再确认一下其它的方法，像<code>DiskUsage, ListWorkers</code>。</p>
 <p>经过简单的查找，果然：<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2fd008faf3f44330b4cab02641461995~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Screen%20Shot%202021-11-11%20at%208.06.54%20PM.png" alt="Screen Shot 2021-11-11 at 8.06.54 PM.png" /></p>
 <p>controller的方法里，确实包含了我们想要的对象，终于连接上了，看来可以从这里再继续探索了。</p>
 <p>袁小白一边感谢着龙飞，一边不禁心生敬意。</p>
 <p>真是山穷水尽疑无路，柳暗花明又一春。</p>
@@ -544,12 +544,12 @@ func main() {
 袁小白的理解是，前面就像是客户端，准备参数，向服务器发送请求，服务器接收到请求后，进行处理。<br />
 而且服务器提供的是GRPC类型的服务，应用的是HTTP协议。<br />
 基于这样的理解，袁小白搓着手，信心满满的打开了下一个<code>Solve</code>方法：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/e57d7af3df4c42849c253423ac962d94~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-12%20at%208.01.06%20PM.png" alt="Screen Shot 2021-11-12 at 8.01.06 PM.png" /><br />
 可以看到，在control里面，调用solver，并进行<code>Solver</code>。<br />
 这里的参数什得我们关注，如有传入Frontend相关信息，不过req.Frontend是字符型，也就是说这里传的只是Frontend的类别，比如咱们这里就是dockerfile。<br />
 下面的Definition也值得我们关注，还记得前面有提到，如果是<code>./example | buildctl build</code>，那么这里的Definition就是从标准输入读取的，目前我们用的是读取dockerfile的方法，也就是说这一项是为空的。</p>
 <p>接下来再看<code>c.solver.Solve(...)</code>:<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/96696f2440a449bf8d0bc054c106e35d~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-12%20at%208.07.54%20PM.png" alt="Screen Shot 2021-11-12 at 8.07.54 PM.png" /><br />
 终于我们看到了frontend.Result，也就是说这里会用到Frontend，解析dockerfile后，产出结果。<br />
 在这里分了两种情况：</p>
 <ul>
@@ -557,28 +557,28 @@ func main() {
 <li>剩下的都是由s.Bridge(j).Solve(...)来处理了</li>
 </ul>
 <p>自然而然，袁小白，又打开了bridge，查找起了又一个Solve:<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/e0c962be1385459b8e484edcffc2d8eb~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-12%20at%208.15.24%20PM.png" alt="Screen Shot 2021-11-12 at 8.15.24 PM.png" /><br />
 果不其然，这里我们终于找到了frontend使用的地方，通过b.frontends map用req.Frontend取得frontend实例，然后用f.Solve真正的开开始解析。</p>
 <p>那这些实例又是在哪儿初始化的呢？<br />
 这时，袁小白想起来龙飞说的话 - 初始化都是在创建controller实例了时候进行的。<br />
 想到这，就打开了buildkitd，的主函数，并查找实例化controller的地方：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/3702b0c0a9ce448aab25480b414fa8cb~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-12%20at%208.21.19%20PM.png" alt="Screen Shot 2021-11-12 at 8.21.19 PM.png" /><br />
 果然如龙飞所说，就是在newController的时候，也初始化好了frontends，并且这里就有dockerfile的类型，而且保存的是一个GatewayForwarder实例，但可以看出，真正处理的还是dockerfile.Build方法，终于找到了这里，袁小白不禁兴奋的咽了口口水。</p>
 <p>可好景不长，这个Build函数的将近500行，扫了一眼代码，挫败感又卷土重来:<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/fbdfaf3c82bb427e8d8bb066ff10a987~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-12%20at%208.26.01%20PM.png" alt="Screen Shot 2021-11-12 at 8.26.01 PM.png" /><br />
 没办法，只好硬着头皮上了。</p>
 <p>前面的一些常规配置读取到还无关紧要，但后面的一串操作让袁小白不知所措。<br />
 比如llb系列：<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8af53c66e6b14e119ac9440e5c01268d~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Screen%20Shot%202021-11-12%20at%208.29.06%20PM.png" alt="Screen Shot 2021-11-12 at 8.29.06 PM.png" /></p>
 <p>再比如这个长长的Dockerfile2LLB方法：<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/71e4ca3a7fb34076927fa1f6ea9e03ea~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Screen%20Shot%202021-11-12%20at%208.30.22%20PM.png" alt="Screen Shot 2021-11-12 at 8.30.22 PM.png" /></p>
 <p>最奇怪的是，这里面又来了一次c.Resolve:<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/bf5a08d6dc3344aa96853cd3e35df186~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-12%20at%208.31.29%20PM.png" alt="Screen Shot 2021-11-12 at 8.31.29 PM.png" /><br />
 咱们不是刚从client.Solve过来的吗？</p>
 <p>问题一个接一个，实在是泥牛入海，使不上劲的感觉。</p>
 <h1>数据结构</h1>
 <p>龙飞似乎预感到了袁小白会再次发现新的疑惑点，因为龙飞自己通过上一次和袁小白一起梳理后，也感觉到有一些细节在第一次的梳理时，是有漏掉的，带着这些新的线节，龙飞将Frontends flow又重新整理了一遍：</p>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/084f0f1bbe4b4cde9aa9f1074b41b74b~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<p><img src="./img/Frontends%20flow.jpg" alt="Frontends flow.jpg" /><br />
 袁小白一看见这张图，好像脑子里正在到处游走的信息，一下子都找到了自己的位置，独立确有了明显的规律。</p>
 <p>看到袁小白的目光被Frontend flow给吸引住，龙飞开始说道。</p>
 <p>这个解析流程确实有点绕，单单一个solve，就出现了8次，这就会让我们产生一些疑问：这些solve都是一个意思吗，在不同的对象里，如buildctl, client, control, solver等等，这些solve在这些对象里难道都是拥有同样的意义？<br />
@@ -591,7 +591,7 @@ func main() {
 <li>前端发出请求后，剩下的也就要交给后端了，这里后端为了处理好解析请求，需要做好充足的准备。比如需要准备好frontends实例，因为需求上需要支持多种不同的frontend，而dockerfile只是前端的一种，况且这还是亲儿子，必需得支持好。其次为了GRPC的注册和管理能统一管理，这里control需要关心的就是提供对应的方法函数。而GRPC服务相关的就交给controller.Register了，像URL匹配，及GRPC服务相关的设置项都统一提前准备好。因为有了这些准备，control成功接收了前端发来的解析请求。</li>
 <li>为了正确解析，solver需要将真正提供解析服务的frontend关联起来，所以需要一个bridge</li>
 <li>bridge并不能自己解析，需要找到真正的frontend实例，如这里的frontends[&quot;dockerfile.v0&quot;]，也就是frontend中dockerfile提供的build方法，因为需要解析中间状态，所以有一个回调，这里要注意，虽然都是调用的llbbridge.solve，但两次所走的代码分支是不一样的：<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/612c497fbdca48789ef8c905f36ebefb~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-13%20at%208.24.56%20PM.png" alt="Screen Shot 2021-11-13 at 8.24.56 PM.png" /><br />
 分别是第一次req里传过来的是字符型frontend种类，第二次是经过解析后的拥有req.Definition，并用ResultProxy封装了已解析的dockerfile信息，只不过转换成了Definition。</li>
 </ul>
 <p>这里也正是袁小白不明白的地方，为什么在dockerfile.build里，又会出现c.solve，终于在这里找到了答案。</p>
@@ -609,12 +609,12 @@ func main() {
 <strong>数据结构之间的关系到底是什么样的？</strong></p>
 <p>带着这个问题，袁小白想到，目前看到了dockerfile.build，在这里面出现了三个地方是和数据相关的。</p>
 <p>一个是将dockerfile转换成src，虽然还没有看这里的实现细节，看起来好像是将dockerfile转换成了llb语言：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/fadd98ee831d44209a9e462093e3ad0b~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Screen%20Shot%202021-11-14%20at%2010.12.54%20AM.png" alt="Screen Shot 2021-11-14 at 10.12.54 AM.png" /></p>
 <p>还有一个就是dockerfiel2llb.Dockerfile2LLB:<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/dbddf815f4ac48b7b1479ac68b02ef20~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-14%20at%2010.14.56%20AM.png" alt="Screen Shot 2021-11-14 at 10.14.56 AM.png" /><br />
 这里不禁让袁小白有点困惑，前面不是已经转了吗，为什么这个地方还又再转一次？难道两次不一样？</p>
 <p>最后这个地方也来源自dockerfile2llb.Dockerfile2LLB，因为这里有一个依赖条件，那就是参数中的<strong>dtDockerfile</strong>这个[]byte类型，将硬盘上的dockerfile加载到了内存空间，那这个又是在哪里准备的呢？<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/17ca17e857fd4697a019f053e0f19f1f~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-14%20at%2010.20.15%20AM.png" alt="Screen Shot 2021-11-14 at 10.20.15 AM.png" /><br />
 虽然找到了这些信息是如何读取的，解决了一个问题。<br />
 但是又出现了三个问题：<br />
 为什么这里又要c.Solve一下？<br />
@@ -624,16 +624,16 @@ ref又是什么？</p>
 <p>目前对LLB的了解，似乎接近于零，因为哪怕是从贾大智对大致架构的<a href="https://juejin.cn/post/7028192294016647182">解读</a>，都没有提到这一块。<br />
 这真是让人难以相信，这么重要的模块居然没有说明！</p>
 <p>袁小白很快便找到了llb位置所在，位于client包下：</p>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/527c2d04467b4bec9add8bbe72ea9c01~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Screen%20Shot%202021-11-14%20at%2010.33.28%20AM.png" alt="Screen Shot 2021-11-14 at 10.33.28 AM.png" /></p>
 <p>看着这么多的新文件，这让袁小白感觉又进入了另一个元宇宙...</p>
 <p>不过让人开心的是，这里有很多以_test结尾的文件，习惯了TDD（Test Driven Development - 测试驱动开发）后，感觉测试就是另一种类型的文档，不仅能说明很多信息，还可以用来执行，解答疑惑。</p>
 <p>但袁小白很快发现，这些都是一些局部的测试，并没有让自己有一个全局的理解，LLB到底是干什么的？<br />
 通过全局查找，袁小白似乎看到了希望：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/76d77c4aac1b495eafe5d9f4ffabbff5~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-14%20at%2010.46.31%20AM.png" alt="Screen Shot 2021-11-14 at 10.46.31 AM.png" /><br />
 在buildkit0这个例子中，正好讲的就是LLB的使用方法，看起来好像是将dockerfile中一行行的指令用另一种形式组织起来，并且可以同时梳理出多个dockerfile之间的关联！</p>
 <h1 id="llb">LLB简单不简单</h1>
 <p>找到这个用例<code>examples/buildkit0/buildkit.go</code>之后，袁小白精神为之一振，试了运行了一下测试，可以跑通：<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2a4996d5ac3a456cbbfeb246260a333c~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-15%20at%207.32.12%20PM.png" alt="Screen Shot 2021-11-15 at 7.32.12 PM.png" /><br />
 虽然从结果来看，好像没有太多信息，但这说明可以借助一些日志信息帮助理解，信心也就变得更足了。</p>
 <h2 id="main">main</h2>
 <pre class="golang"><code>func main() {
@@ -751,17 +751,17 @@ ref又是什么？</p>
 <p>袁小白越想越兴奋 - LLB用起来还挺简单的，一看就明白，可实现起来，好像还真不简单！</p>
 <h1 id="llb.state">神奇的llb.State</h1>
 <p>回想起因为dockerfile.Build里如何使用llb的场景：<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/465473c9878c45b78a4fbed4d88efabf~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-16%20at%207.49.36%20PM.png" alt="Screen Shot 2021-11-16 at 7.49.36 PM.png" /><br />
 袁小白想着，对llb有了大概的理解后，如何找到一个难度适宜的例子，对llb.State进行学习呢。</p>
 <p>经过一番查找，真是黄天不负有心人，还真就找到了：<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/b33b0a738f9c4b398d39891efbf71e26~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-16%20at%207.52.58%20PM.png" alt="Screen Shot 2021-11-16 at 7.52.58 PM.png" /><br />
 从名字上来看，这个测试用例测试的场景是默认平台。<br />
 通过<code>s := llb.Image(&quot;foo&quot;).Run(llb.Shlex(&quot;bar&quot;))</code>组装好构建语言，基于image - &quot;foo&quot;，运行脚本&quot;bar&quot;，然后对状态进行整治<code>s.Marshal</code>，还记得这里是可以传入默认平台的，目前是缺省，那就是用的默认平台；接着用<code>llbsolver.Load</code>来加载，这个好像是第一次出现，并且返回的类型是solver.Edge，这个类型也是第一次出现，那这个类型和之前的Definition, State又有什么关系呢？最后对比了一下默认平台和拼装的image id。</p>
 <p>为了弄清楚在整个过程中，llb.State到底起到了什么样的作用，是如何将这些状态都关联起来的。<br />
 袁小白准备从最关键的一句开始：</p>
 <pre class="golang"><code>s := llb.Image(&quot;foo&quot;).Run(llb.Shlex(&quot;bar&quot;))</code></pre>
 <p>经过一番挣扎，耗时好几个晚上的时间，终于把关系给梳理了出来：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/606d8ed87b0c444a8c0571bacfff0210~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/State%20concept.jpg" alt="State concept.jpg" /><br />
 从图中也可以看出，实例间的关联结构确实有点绕。</p>
 <ul>
 <li>前半句<code>llb.Image(&quot;foo&quot;)</code>，创建了一个SourceOp，也就是源操作</li>
@@ -776,7 +776,7 @@ ref又是什么？</p>
 为了再找到一些线索，袁小白决定从源码的角度再梳理总结一遍，看能不能得到一些启发。</p>
 <h1 id="llb.state">神奇llb.State之代码实现</h1>
 <p>为了更好的理解作者的意图，袁小白决定把看过的代码，结合状态图再梳理一遍：<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8353d76fe0124e0caf506d18b5978708~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/State%20concept.jpg" alt="State concept.jpg" /></p>
 <h2 id="llb.imagefoo">llb.Image(&quot;foo&quot;)</h2>
 <p>因为我们只是传入了一个image ref，并没有其它的任何参数，代码可以简化为：</p>
 <pre class="golang"><code>func Image(ref string, opts ...ImageOption) State {
@@ -786,11 +786,11 @@ ref又是什么？</p>
    ...
    return NewState(src.Output())</code></pre>
 <p>从代码中，可以看出主流程做了三件事，一是将传入的<code>ref</code>进行解析，这里的<code>reference.ParseNormalizedNamed</code>方法，来自于docker:<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/c1b62fa9f8014cc7baeff4be58bfd701~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-17%20at%207.18.43%20PM.png" alt="Screen Shot 2021-11-17 at 7.18.43 PM.png" /><br />
 二是新建了Source：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/b8dff713b6f94603bbc68e042b21cdda~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Screen%20Shot%202021-11-17%20at%207.20.17%20PM.png" alt="Screen Shot 2021-11-17 at 7.20.17 PM.png" /><br />
 这里出现了SourceOp，其中包含了它的output，就像我们最开始的状态图所示：<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/98df32929f3a481685fbcc7104ea8e0c~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/State%20concept（副本）.jpg" alt="State concept（副本）.jpg" /><br />
 三是用src.Output() - s.output创建了新状态并返回，也就是说这里才是State被创建的地方。</p>
 <pre class="golang"><code>func NewState(o Output) State {
    s := State{
@@ -851,7 +851,7 @@ func dirf(value string, replace bool, v ...interface{}) StateOption {
 <li>每个State都是一个结点，有自己的key, value，并且value是可以接收Constraints的函数，可灵活处理不同的情况</li>
 </ul>
 <p>回到我们的状态图来看，也就来到了下面的状态：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/b653245fea5043f3a09ddd7b29253665~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/State%20concept副本1.jpg" alt="State concept（副本） (1).jpg" /></p>
 <h3 id="runllb.shlexbar">.Run(llb.shlex(&quot;bar&quot;))</h3>
 <pre class="golang"><code>func (s State) Run(ro ...RunOption) ExecState {
    ei := &amp;ExecInfo{State: s}
@@ -889,7 +889,7 @@ func (s State) WithOutput(o Output) State {
    return s
 }</code></pre>
 <p>从<code>Run</code>函数可以看出，先创建出了ExecInfo，这里将会收集创建NewExecOp所需的参数信息，其中ReadonlyRootFS将永定ExecOp的output，也就是e.root的值，如果readOnly为true，就和上一个State一样，但这里我们走的流程是else，也就新创建了一个output，最后返回的是ExecState：<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/d199ab0f5c1d424eaf61448b7f5240ff~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/State%20concept.jpg" alt="State concept.jpg" /></p>
 <p>这样我们就走完了这个简单用例的全流程。<br />
 理解上好像是清楚了一点，那接着往下看：</p>
 <pre class="golang"><code>func TestDefaultPlatform(t *testing.T) {
@@ -982,7 +982,7 @@ def也传了进去，看来猜想的没错，确实是用来存储数据的。</
    return def, nil
 }</code></pre>
 <p>可以看出这里有一个递归调用小marshal，如果v.Inputs()不为空，那么就会触发递归：<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/a1c226e0b1d94fdba5194e63d8cabdd2~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/buildkit%20dag（副本）.jpg" alt="buildkit dag（副本）.jpg" /><br />
 贾大智还说过，看递归，主要看两点，一个是抽象出递规函数要做的事情，也就是会重复被调用的动作，再就是看出口，也就是退出递归的地方。</p>
 <p>这里正好可以试验下这种方法：</p>
 <ul>
@@ -1080,10 +1080,10 @@ def也传了进去，看来猜想的没错，确实是用来存储数据的。</
 <p>话是这么说，袁小白不禁心里还是泛起了嘀咕：你怎么不去梳理啊。</p>
 <p>想归想，袁小白还是找机会，认真的看起了源码。</p>
 <h2 id="marshal">递归Marshal思想</h2>
-<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/60999377e2684b0daf3d975a65c12c23~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/buildkit%20dag（副本）.jpg" alt="buildkit dag（副本）.jpg" /></p>
 <h2>递归实例理解</h2>
 <p>基于对<code>examples/buildkit0/buildkit.go</code>实例的理解，加上理解到的递归思想，袁小白对用例进行了梳理：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/24c3fceca0a648c7a2eb0a5641ded178~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/LLB%20Flow（副本）.jpg" alt="LLB Flow（副本）.jpg" /><br />
 从图中可以看出清晰的递归调用流程：</p>
 <ol>
 <li>基于构建好的llb.State链表，如果要进行Marshal，最先会从最后一个结点开始进行递归，但为例子中所有的操作都是SourceOp和ExecOp类型，所以都会有自己的Marshal方法。</li>
@@ -1093,7 +1093,7 @@ def也传了进去，看来猜想的没错，确实是用来存储数据的。</
 <p>从结构上来看，像是一颗反过来的树。</p>
 <h2 id="llb.state">llb.State实例理解</h2>
 <p>如果要将准备好的State都转化成Definition，那对应的llb.State调用顺序又会长什么样呢：<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/c530f8ce3aec4b56942f8461922eebb9~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/LLB%20Flow副本1.jpg" alt="LLB Flow（副本） (1).jpg" /><br />
 通过梳理：</p>
 <ol>
 <li>可以看到起先是各自独立的State，如S1, S2, S3，也就是通过llb.Image创建的结果，这时他们互相并不知道对方的存在，并没有关联</li>
@@ -1271,7 +1271,7 @@ func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Dige
    return vtx, nil
 }</code></pre>
 <p>主要目的就是创建vertex，但值得注意的是在op.Inputs的循环中，又调用了传入的<code>load()</code>，这个load就是上面的<code>rec</code>。</p>
-<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/98345502f78a427298b8288695e25b4c~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<p><img src="./img/Edge%20concept.jpg" alt="Edge concept.jpg" /><br />
 没错，这里又出现了递归。<br />
 像之前理解递归一样，我们需要关注两点：</p>
 <ul>
@@ -1371,7 +1371,7 @@ func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Dige
 <p>再看龙飞的时序图，真是不得不佩服，接下来就看真正的Build了。</p>
 <h1 id="build">是时候开始Build了</h1>
 <p>为了加强自己的理解，袁小白像以往一样，梳理了下流程图：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/c0d1efa8143e4aa08644e088c1682e82~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Solver%20Bridge.jpg" alt="Solver Bridge.jpg" /></p>
 <ol>
 <li>solver接受到请求后，在Solve方法中调用Bridge的Solve方法，开始解析</li>
 <li>在bridge中调用Frontend进行解析，这里的Frontend就是dockerfile</li>
@@ -1461,7 +1461,7 @@ func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Dige
 <p>不知道要用什么样的姿势，才能正确打开jobs的load和s.build</p>
 <h1 id="jobs">jobs的世界</h1>
 <p>从龙飞给出的<code>buildctl build</code>全景时序图中可以了解到：<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/51099b46c225455bb179d77a97543341~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /><br />
 Worker是用来真正运行容器的，那jobs的定位又是什么呢？</p>
 <p>带着这个问题，袁小白打开了<code>j.list.load(e.Vertex, nil, j)</code>，稍早之前有看到初始化Job的时候，j.list指的是jobs.go中的Solver，所以j.list.load就是：</p>
 <pre class="golang"><code>func (jl *Solver) load(v, parent Vertex, j *Job) (Vertex, error) {
@@ -1556,7 +1556,7 @@ Worker是用来真正运行容器的，那jobs的定位又是什么呢？</p>
 <p>没耐住性子，又求助了龙飞。<br />
 龙飞一如既往的没有让袁小白失望，没过多久，就按约定和袁小白讲起了自己的理解。<br />
 还是从一张图开始：<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/02b74a0478414f0a835b0850f3dea321~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/scheduler.jpg" alt="scheduler.jpg" /><br />
 看着这张密集的流程图，袁小白不禁暗自感慨，这才不到两周啊，就又梳理完了？！</p>
 <p>指着流程图，龙飞开始娓娓道来。<br />
 我是从<code>solver/scheduler_test.go</code>中的测试用例开始看的：</p>
@@ -1679,7 +1679,7 @@ require.Equal(t, st.Err, context.Canceled)</code></pre>
 比如总共有三个管道，彼此互相联接，前一个管理的结果想要传递给后一个时，可以让后一个管理持有前一个管道的Receiver，并在前一个管道的OnSendCompletion事件中注册触发事件，那这样是不是就可以把依赖顺序设定好，并且接计划执行了？！</p>
 <p>那这个神奇的pipe到底是怎么实现的呢？<br />
 好奇心又让袁小白忍不住接着往下看了。<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/867c05326c4d40deb9c417165c2039b5~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Pipev2.jpg" alt="Pipe - v2.jpg" /></p>
 <p>原来pipe是由这些组件组成的，那他们又是怎么互相协作，才能变出这么神奇的魔术的呢？</p>
 <h1 id="pipe">Pipe设计原理</h1>
 <p>袁小白也看过类似的设计模式，如pipe。<br />
@@ -1689,11 +1689,11 @@ require.Equal(t, st.Err, context.Canceled)</code></pre>
 不过再一想之前看到的设计模式，通常是同步的操作，也就是操作本身并不复杂，只不过需要有序的将各操作串联起来，并提供通用功能的支持，比如输入输出的较验等。</p>
 <p>那用golang如何实现一个可支持中断操作的管道pipe功能呢？<br />
 袁小白的好奇心又一次跳了出来。</p>
-<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2a91b73a8ee548eba3f1591477fafd91~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Pipev2.jpg" alt="Pipe - v2.jpg" /></p>
 <p>目前，对于pipe的构成有了一定的了解，那究竟buildkit是如何设计和实现这个pipe的呢？<br />
 带着这个疑问，袁小白开始梳理起了模块之间的时序图。</p>
 <h2 id="pipe">Pipe前期准备之初始化</h2>
-<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/db2f54ce0ff849c1af49317d50d0fc39~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/pipe%20journey（副本）.jpg" alt="pipe journey（副本）.jpg" /></p>
 <ul>
 <li><p>创建一个channel - runCh，和用户自定义function配合使用，如我们的可阻塞函数，我们在等待runCh的写入，这样我们就可以返回结果&quot;res0&quot;</p>
 <pre class="golang"><code>f := func(ctx context.Context) (interface{}, error) {
@@ -1781,7 +1781,7 @@ require.Nil(t, st.Value)<br />
 require.Equal(t, signalled, 0)<br />
 ```</p>
 <h2 id="pipe-happy-path---">Pipe happy path - 正常流程</h2>
-<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/05f3adb677794fbc801533ee18b7ded8~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<p><img src="./img/pipe%20journey副本1.jpg" alt="pipe journey（副本） (1).jpg" /><br />
 正常流程就是我们搭建好了pipe管道，并执行，得到我们期待的结果，一切都很顺利。</p>
 <ul>
 <li><p>准备正常返回，也就是runCh信道正常收到消息 - <code>close(runCh)</code>，比如http请求的异步请求正常返回；然后当前goroutine进入阻塞 - <code>&lt;-waitSignal</code>，监听信号，等待被唤醒：</p>
@@ -1818,7 +1818,7 @@ require.NoError(t, st.Err)
 require.Equal(t, st.Value.(string), &quot;res0&quot;)</code></pre></li>
 </ul>
 <h2 id="pipe-">pipe 取消流程</h2>
-<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/625c42bdecc24ac298fd62ef64fdabde~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<p><img src="./img/pipe%20journey%20cancel.jpg" alt="pipe journey - cancel.jpg" /><br />
 和正常流程不一样的地方在于，用户主动取消息了pipe操作，调用了<code>p.Receiver.Cancel()</code></p>
 <pre class="golang"><code>p.Receiver.Cancel()
 &lt;-waitSignal</code></pre>
@@ -1895,10 +1895,10 @@ if err != nil {
 e.Vertex = v
 ...</code></pre>
 <p>将原有的e.Vertex转换成了j.list.load的返回值，就是vertexWithCachOptions，而这个新的vertex，实现了Vertex的所有接口，其中就实现了<code>Inputs() []Edge</code>，也就是在这里将所有的Edge都关联了起来：</p>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/0bc74c2b621a49de8715fecd1ca2e164~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Edges%20inputs.jpg" alt="Edges inputs.jpg" /></p>
 <p>用我们常用的例子来理解，我们现在有两个Op，一个是SourceOp，另一个是ExecOp，都被包裹在了常规的vertex中，为了对Edge进行构建，我们需要将这些初始的vertex包装成vertexWithCacheOptions，并用Edge来进行关联。<br />
 这样，DAG图变得更清晰了：</p>
-<p><embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/6e4827c5731343ddb104a83110b835ee~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Edges%20inputs%20DAG.jpg" alt="Edges inputs DAG.jpg" /></p>
 <p>DAG有向无环图是由结点Vertex和边Edge组成。<br />
 目前我们的结点进行封闭后，最外层是vertexWithCacheOptions，原始层就是vertex，而vertex又连接着Op，也就是operation，我们这个简单的例子中有两个Op。<br />
 Vertex之间的关联方式是用<code>Inputs()</code>关联起来的，而Input就是Edge。<br />
@@ -2061,7 +2061,7 @@ func (s *scheduler) dispatch(e *edge) {
 <li><code>added := e.createInputRequests(...)</code>，如果是可执行的Op，要看看依赖有没有准备好，也就是自己的Inputs，又会创建新的pipe。</li>
 </ul>
 <p>这一环环的梳理下来后，如何更直观的理解呢？<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/5b0503fe253243348c84f7b65b69ee7f~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Edges%20inputs%20edge%20pipes.jpg" alt="Edges inputs - edge pipes.jpg" /></p>
 <ul>
 <li>从Edge0开始构建，创建了一个只关心<code>close(wait)</code>的pipe0</li>
 <li>进入到<code>unpark</code>后，会检查自己Op的CacheMap，也就是这里的第二步，创建的pipe1，pipe1是从pipe0来，所以发送完成的时候会发送edge0信号，这样再次分发的dispatch事件就可以让edge0的pipe获取所需要内容，看看是否已经完成</li>
@@ -2070,7 +2070,7 @@ func (s *scheduler) dispatch(e *edge) {
 </ul>
 <p>可以看出这也是一个递归，而pipe的作用就是将大家都关联起来，可以触发回调事件，这里是<code>s.dispatch</code>，<code>s.loop</code>就像事件总线，负责监听新事件，并发送。</p>
 <p>既然是递归，那就有了口，那edge的出口又在哪儿呢，是怎么判断自己完成了呢？<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/632f5ad7ec1b4f38a24b1bc8ed46be77~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Edges%20inputs%20edge%20pipes1.jpg" alt="Edges inputs - edge pipes (1).jpg" /><br />
 还记得s.incoming, s.outgoing数组吗？<br />
 里面存储了所有的pipe，而edge递归构建的出口就在：</p>
 <pre class="golang"><code>desiredState, done := e.respondToIncoming(incoming, allPipes)</code></pre>
@@ -2079,7 +2079,7 @@ func (s *scheduler) dispatch(e *edge) {
 <p>原来如此！<br />
 Scheduler真是一位好管家，将所有的事情管理的有条不紊。</p>
 <h1 id="sourceop-cachemap">SourceOp CacheMap</h1>
-<p><embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/79d721bfe25541babceaf284b3a9c505~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<p><img src="./img/Edges%20inputs%20edge%20pipes.jpg" alt="Edges inputs - edge pipes.jpg" /><br />
 要想理解递归，除了抽象出同样的行为外，再就是找到循环的出口。<br />
 在上一次梳理的结果中可以看到，Edge1是递归的最后一个edge，在edge中，由于SourceOp的inputs为空，所以在edge中的出口是pipe3，也就是op.CacheMap:</p>
 <pre class="golang"><code>f.NewFuncRequest(func(ctx context.Context) (interface{}, error) {
@@ -2089,7 +2089,7 @@ Scheduler真是一位好管家，将所有的事情管理的有条不紊。</p>
 <p>那现在是时候看一看这个自定义函数做了哪些处理，这样就是能调用pipe.OnSendCompletion来完成并退出这个操作，也就是递归结束开始的信号。</p>
 <p><code>e.op.CacheMap</code>究竟做了什么呢？<br />
 经过梳理，袁小白终于找到了CacheMap真正干活的那个了：<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/5c688cbdebd04160b8888004b26738af~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/Source%20of%20Truth%20CacheMap.jpg" alt="Source of Truth - CacheMap.jpg" /></p>
 <ol>
 <li>出发点-edge unpark，在这里将op.CacheMap封装成自定义函数，用于新建pipe</li>
 <li>op来自于jobs里用newSharedOp创建出来的sharedOp，这样可以将vertex封闭成在上一阶段处理所需要的状态和信息</li>
@@ -2103,7 +2103,7 @@ Scheduler真是一位好管家，将所有的事情管理的有条不紊。</p>
 <p>梳理完后，袁小白不禁松了口气。<br />
 这个传递链也太长了，好多前面命名是用这个，后面是那个；要么就是从前到后用的都一个，一不留神就断掉了，难怪源码看起来这么费劲费时间。</p>
 <p>好在有龙飞的全流程图，来对比着检验一下：<br />
-<embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2486b86b483a4242b6cf4f01cc341b4b~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /><br />
 关键的点都有，还有一些细节看来可以补充下。</p>
 <p>那再看看好容易找到的最终处理代码：</p>
 <pre class="golang"><code>func (s *sourceOp) CacheMap(ctx context.Context, g session.Group, index int) (*solver.CacheMap, bool, error) {
@@ -2152,7 +2152,7 @@ Scheduler真是一位好管家，将所有的事情管理的有条不紊。</p>
    return src.Resolve(ctx, id, sessM, vtx)
 }</code></pre>
 <p>居然是用数组存起来的：<br />
-<embed src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/e4861a64f268443e83f83ec73519cfe9~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Source%20of%20Truth%20CacheMap.jpg" alt="Source of Truth - CacheMap.jpg" /><br />
 对照着operation创建的地方，袁小白很快发现SourceOp是在worker中被创建的，那这个source.Manager是不是也在那里预先装载好的呢？</p>
 <p>果然，就是在这里：</p>
 <pre class="golang"><code>// NewWorker instantiates a local worker
@@ -2244,7 +2244,7 @@ func NewWorker(ctx context.Context, opt WorkerOpt) (*Worker, error) {
 <p>（这里又出现了新的知识点，那就是OCI中关于Image组织形式，我们这里先挖个坑，后续会继续我们的源码解析。<br />
 为了方便理解，我们先简单的理解为Image的描述和配置信息。）</p>
 <p>再回到edge.go的unpark里：<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/f55616e5f41b4149a2d62eeca17faa99~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Edges%20inputs%20edge%20pipes.jpg" alt="Edges inputs - edge pipes.jpg" /><br />
 我们的pipe3这时候可以回调OnSendCompletion了。</p>
 <p>我们准备好了镜像的基础信息后，又要拿这些信息干什么用呢？</p>
 <h1 id="sourceop-exec">SourceOp Exec</h1>
@@ -2400,7 +2400,7 @@ type mutableRef struct {
 <p>这两个Ref都是cacheRecord的拓展。<br />
 为了进一步了解她们的工作原理，袁小白打开了<code>manager_test.go</code>，仔细研读了起来。</p>
 <p>经过一番摸索，袁小白终于弄清楚了她们之间的逻辑：<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/980b238b3dfa4dfe9ff2a13e58d1791d~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/cache%20manager%20state1.jpg" alt="cache manager state (1).jpg" /></p>
 <p>原来cacheRecord只是用来存储基础数据的，里面有metadata来做持久化操作，这个metadata也挺有趣，值得研究一下。<br />
 而重点是mutableRef和immutableRef，这两个状态可以互相转换。<br />
 而谁需要这两个状态呢，答案是snapshotter，当snapshotter.Prepare的时候会产生mutableRef，也就是这个时候是可以修改的；mutableRef通过Commit可以转换成immutableRef的状态；最后immutableRef可以通过finalize，并commit到snapshotter。<br />
@@ -2508,7 +2508,7 @@ type mutableRef struct {
 <p>而<code>PrepareMounts</code>重点做的事情就是将ref和将要挂载的下标MountIndex对应上，因为很有可能要挂载多层ref，而在我们在例子中，我们只有一层，那就是SourceOp的immutableRef。<br />
 而这些操作都依赖于传入的<code>e.op.Mounts</code>，看来我们有必要再梳理一下op的来源了，以帮助进一步理解ExecOp到底是如何执行的。</p>
 <h3 id="op">op的生命周期</h3>
-<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/94c2ef07f6c94aff8f2a4a7b49002cb6~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/Operation%20op%20lifecycle.jpg" alt="Operation - op lifecycle.jpg" /></p>
 <ul>
 <li>从将Dockerfile转换成llb.State开始，在State中，通过Output将Vertex进行关联，这里首次出现了Op，分别是SourceOp和ExecOp，他们主要是实现了Vertex接口。</li>
 <li>对于SourceOp最对应的Dockerfile信息就是id，也就是<code>From Foo</code>，让我们知道哪个是基础镜像。</li>
@@ -2573,7 +2573,7 @@ type mutableRef struct {
 <pre class="golang"><code>ops.NewExecOp(v, op, baseOp.Platform, w.CacheMgr, w.ParallelismSem, sm, w.WorkerOpt.Executor, w)</code></pre>
 <p>发现倒数第二个参数，就是Executor - <code>w.WorkerOpt.Execcutor</code>，这里的w，自然就是worker了。<br />
 看来先要弄清楚worker的来历了：<br />
-<embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/f9c31102fea94da08a0200a264827ce6~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<img src="./img/Create%20Worker（副本）.jpg" alt="Create Worker（副本）.jpg" /><br />
 经过查找，发现在runc_test.go文件中有相关的测试用例。<br />
 其中包含了如何创建worker:</p>
 <ul>
@@ -2582,7 +2582,7 @@ type mutableRef struct {
 </ul>
 <p>创建是梳理清楚了，那对于我们的这个用例，这个executor又是从哪儿来，怎么配置的呢？</p>
 <h2 id="worker">Worker注册</h2>
-<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/0d7438e0ab64495f993608c1cc9c5be5~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p><img src="./img/worker%20lifecycle（副本）.jpg" alt="worker lifecycle（副本）.jpg" /></p>
 <p>原来，在buildkitd启动的时候，main函数在创建controller - newController的时候，初始化了worker controller - newWorkerController，而worker controller通过执行遍历已注册的worker初始化函数，来真正的创建worker。<br />
 从图中可以看到，在真正运行main函数前，通过golang的init函数特性，我们提前将containerd workder和oci worker已经注册进去，并标明不同的优先级priority，在这里默认的worker是priority配置为0的oci。</p>
 <h2 id="worker">Worker实例化</h2>
@@ -2601,7 +2601,7 @@ type mutableRef struct {
    return wc, nil
 }</code></pre>
 <p>原来，在遍历已注册的worker初始化函数后，在newWorkerController中的遍历<code>range workerInitializers</code>中，真正的初始化了这些worker。</p>
-<p><embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/96d0261def6c45a99465d2974de010f8~tplv-k3u1fbpfcp-watermark.image?" /><br />
+<p><img src="./img/worker%20lifecycle-full.jpg" alt="worker lifecycle-full.jpg" /><br />
 从上图可以看到，实际通过调用各worker的NewWorkOpt方法后，分别创建了runc ececutor，和containerd executor，根据配置，默认的是runc executor。</p>
 <p>那么我们可以回答最开始的那个问题了，<code>e.exec.Run</code>执行的到底是哪个运行时 - runc。</p>
 <p>进到executor包，我们果然找到了<code>executor/oci/runcexecutor/executor.go</code>，打开文件，大大的Run函数映入眼帘:</p>
@@ -2695,7 +2695,7 @@ func (w *runcExecutor) run(ctx context.Context, id, bundle string, process execu
 }</code></pre>
 <p>通过<code>s.Bridge(j).Solve</code>解析，获取所有的ref解析结果<code>res.EachRef - ref.Result</code>，最后导出返回值<code>exporterResponse, err = e.Export(...)</code></p>
 <p>那这里的Export指的又是什么呢？让我们将这些点都连接起来，来讲讲Export的故事：<br />
-<embed src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/a53ca7440f8447558533e6328ebfde11~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<img src="./img/exporter%20lifecycle.jpg" alt="exporter lifecycle.jpg" /></p>
 <ul>
 <li>当用户的构建指令传递给命令行buildctl时，buildAction首先接收到信息，通过ParseOutput入口，将字符串信息解析成对应的数据结构，最终得到Type为image的ExportEntry并返回，这样命令行的解析工作就完成了。</li>
 <li>当前端client将解析命令传递给后端也就是<code>buildkitd</code>时，最先接收到相关信息的是control，并通过Solve方法，将信息传递给workerController</li>
