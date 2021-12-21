@@ -18,10 +18,45 @@
 <h3 id="menu">Menu</h3>
 <ul>
 <li><a href="spec.md">Spec</a></li>
+<li><a href="1.md">研发效能</a></li>
 <li><a href="content.md">Content</a></li>
 </ul>
-<h1 id="content">Content</h1>
-<p>Some content</p>
+<h1>研发效能</h1>
+<h2>缘起</h2>
+<p>早春的阳光正好，咋暖还寒。<br />
+像往常一样，我打开电脑，依靠在椅子舒服的查看起邮件。<br />
+首先映入眼帘的，是一封研发效能起头并标粗的邮件。<br />
+没错，这是我上周认领的2021年的OKR（Object Key Result），我自己定的目标是让部门所有团队的4KM(DevOps research - Four Key Metrics)指标提升到High。</p>
+<p>是的，11月了，已近年底。<br />
+想借这个机会，梳理一下这一年来关于研发效能的一些故事。</p>
+<h2>主角</h2>
+<p>大家猜猜主角是谁，很容易对吧，当然是研发效能了！<br />
+然后并不是！主角是Moby <a href="https://github.com/moby/buildkit">Buildkit</a>项目。</p>
+<p>因为研发效能出自<a href="https://www.devops-research.com/research.html">DevOps Research</a>(简称DORA)组织，通过收集世界范围内超32000多家企业DevOps数据，产出软件行业组织效能的报告。<br />
+该报告对组织效率和软件交付效率之间的关系进行了分析，并综合统计结果，给出了衡量效率的四个指标，也就是上文提到的4KM。<br />
+从2014年开始，一直到2021，已经七年。<br />
+目前已被Google Cloud收购。<br />
+DORA做了一件了不起的事情，那就是给出了衡量软件研发效能的明确指标，并阐述了想要达到高效能，该从哪些方面入手，之前的关联是什么样的。</p>
+<p><embed src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/045a664a19f647e792b32252875ece36~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>对于企业最大的影响就是，你现在明确知道你在这个行业里，处于一个什么样的排名了。</p>
+<p>这也解释了为什么我们要将DORA排上日程。</p>
+<p><strong>那这么重要怎么就没成主角呢？</strong></p>
+<p>原因很简单，因为DORA根正苗红，目前已被行业基本认可。<br />
+也就意味着当企业准备推行研发效能时，将不会有什么阻力。<br />
+反而所有的人都愿意接受她，甚至唯恐被落下了，没有赶上这趟时代列车。</p>
+<p>但DORA主要是从企业的视角来阐述研发效能的。<br />
+那她对于个人开发 - 我们开发者而言，到底意味着什么呢？<br />
+带着这样一个问题，我们借助于一个兴趣小组，对此展开了讨论和学习。<br />
+我们从一个假设开始：</p>
+<p><strong>假设有一个开发者友好的高效能PaaS平台，可以让我们专注在核心业务问题上，那这个平台应该长什么样？</strong></p>
+<p>为了让开发者专注在核心业务上，我们设想她可能长这个样子：</p>
+<p><embed src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/cfd65858176c4d90b3c01430c6567543~tplv-k3u1fbpfcp-watermark.image?" /></p>
+<p>作为开发者，假设我们的核心业务就是用golang输出“hello, world!”，那我们所有要做的事情就只有<code>git push</code>。</p>
+<p>如果想要做到这一点，我们想用一个完全自主的试验性项目，结合高效能所推荐的实践，慢慢让这个高效能变得不再那么神秘，看得见，摸得着。</p>
+<p>Moby Buildkit项目，相对于Docker大哥项目较新，意味着学习曲线可控。<br />
+所提供的知识点，像容器的构建和运行，也正好可以给出目前较新的实践，和工具的用法。<br />
+就这样成为了天选之子，从此，主角光环加身。</p>
+<h1 id="moby-buildkit-">Moby Buildkit 源码读书笔记</h1>
 <p><img src="./img/dream.JPG" alt="Dream" /></p>
 </body>
 </html>
