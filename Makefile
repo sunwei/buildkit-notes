@@ -23,6 +23,7 @@ endif
 # These docs are in an order that determines how they show up in the HTML docs.
 DOC_FILES := \
 	spec.md \
+	1.md \
 	content.md
 
 FIGURE_FILES := \
