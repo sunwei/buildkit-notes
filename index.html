@@ -232,7 +232,7 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 </ul>
 <h1 id="buildkitd">Buildkitd流程闭环</h1>
 <p>说完代码阅读思路后，龙飞将时序图向右边滑了滑。</p>
-<p><img src="./img/Buildctl%20build%20op.jpg" alt="Buildctl build - op.jpg" /></p>
+<p><img src="./img/BuildctlBuildOp.jpg" alt="BuildctlBuildOp.jpg" /></p>
 <p>剩下的流程就是<code>OP - Operation</code>如何构建的过程，这里的<code>OP</code>，指的是由<code>Dockerfile</code>解析过后，需要执行的操作。<br />
 比如：<code>FRAOM UBUNTU:14.04</code>，这个会被理解为<code>Source OP</code>；而<code>RUN ls</code>则为被解析成<code>Exec OP</code>。<br />
 不过具体怎么实现的数据转换，我还没来得急花时间整理。</p>
@@ -248,7 +248,7 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 最后会调用<code>client.Response</code>，返回请求结果。</p>
 <p>这差不多就是完整的流程了。</p>
 <h2>全流程</h2>
-<p><img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /></p>
+<p><img src="./img/BuildctlBuild.jpg" alt="BuildctlBuild.jpg" /></p>
 <p>简单来回顾一下：</p>
 <ol>
 <li>用户调用<code>buildctl</code>命令行，运行<code>build</code>命令，并传入解析好的<code>Dockerfile</code>，这里并不是<code>Dockerfile</code>的字符流，而是解析过后的<code>llb.Definition</code></li>
@@ -354,13 +354,13 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 周日可要好好看看了。<br />
 心里想着，就起了个大早，泡上一杯自己喜欢的绿茶，津津有味的看了起来。</p>
 <p>首先要将源码更新到最新：</p>
-<p><img src="./img/Screen%20Shot%202021-11-09%20at%207.06.55%20PM.png" alt="版本信息（最早看的时候是三月份，目前从最新的和大家一起来梳理）" /></p>
+<p><img src="./img/BuildkitVersion.png" alt="版本信息（最早看的时候是三月份，目前从最新的和大家一起来梳理）" /></p>
 <blockquote>
 <p>最早看的时候是三月份，目前从最新的和大家一起来梳理</p>
 </blockquote>
 <p><code>frontends</code>这个控件在龙飞讲的时序图里好像没看到，但根据贾大智的描述。<br />
 会出现在<code>client</code>。<br />
-<img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /></p>
+<img src="./img/BuildctlBuild.jpg" alt="Buildctl build.jpg" /></p>
 <ul>
 <li>龙飞的时序图</li>
 </ul>
@@ -374,7 +374,7 @@ DORA做了一件了不起的事情，那就是给出了衡量软件研发效能�
 <p>那我们先顺藤摸瓜，从命令行<code>buildctl build</code>开始吧。</p>
 <p><img src="./img/cmd.png" alt="cmd" /></p>
 <p>找到对应的buildctl的文件夹，并打开文件<code>main.go</code>，可以查看到以下代码结构：<br />
-<img src="./img/Screen%20Shot%202021-11-09%20at%207.22.01%20PM.png" alt="Screen Shot 2021-11-09 at 7.22.01 PM.png" /></p>
+<img src="./img/BuildctlMain.png" alt="BuildctlMain.png" /></p>
 <p>看起来不算复杂，golang会在运行main函数前，执行init函数，且通过import可以看出，命令行工具用的是<a href="https://github.com/urfave/cli">urfave/cli</a>，版本v2有详细的<a href="https://github.com/urfave/cli/blob/master/docs/v2/manual.md">使用说明</a>。</p>
 <pre class="golang"><code>package main
 
@@ -432,9 +432,9 @@ func main() {
 <h1 id="frontends">失踪的frontends</h1>
 <p>袁小白感觉自己状态不错，准备一鼓作气，走通frontends流程。<br />
 还没等编缉器自动装好依赖，就迫不及待的出发了。</p>
-<p><img src="./img/Screen%20Shot%202021-11-10%20at%207.47.08%20PM.png" alt="Screen Shot 2021-11-10 at 7.47.08 PM.png" /></p>
+<p><img src="./img/BuildctlBuildCmd.png" alt="BuildctlBuildCmd" /></p>
 <p>直接定位到<code>build</code>子命令，就发现这个子命令的入口函数就是<code>buildAction</code>:</p>
-<p><img src="./img/Screen%20Shot%202021-11-10%20at%207.49.07%20PM.png" alt="Screen Shot 2021-11-10 at 7.49.07 PM.png" /></p>
+<p><img src="./img/BuildctlBuildAction.png" alt="BuildctlBuildAction" /></p>
 <pre class="golang"><code>func buildAction(clicontext *cli.Context) error {
    c, err := bccommon.ResolveClient(clicontext)
    if err != nil {
@@ -493,22 +493,22 @@ func main() {
 <li>判断命令行里是否有传入&quot;frontend&quot;，如果没有设置，就像龙飞举的例子<code>./example | buildctl build</code>，这时就从os.Stdin标准输入中读取数据，这里对应的是<code>def, err = read(os.Stdin, clicontext)</code>。如果有设置，就像在命令行使用说明里的<code>$ buildctl build --frontend dockerfile.v0 --opt target=foo --opt build-arg:foo=bar --local context=. --local dockerfile=. --output type=image,name=docker.io/username/image,push=true</code>，则看看是否有缓存相关的配置</li>
 <li>最后交由<code>c.Solve</code>统一处理</li>
 </ul>
-<p>嗯，目前为止还算清晰。<br />
-<img src="./img/Screen%20Shot%202021-11-10%20at%208.04.19%20PM.png" alt="Screen Shot 2021-11-10 at 8.04.19 PM.png" /></p>
+<p>嗯，目前为止还算清晰。</p>
+<p><img src="./img/ClientSolve.png" alt="ClientSolve.png" /></p>
 <p>开始进入到了client package下的solve.go。<br />
 可以看出第一个出现的<code>solve</code>，主要是判断，在参数中关于Frontend的配置情况，如果没有设计，那def就不能为空，也就是要从os.Stdin中读取；如果Frontend不为，像<code>dockerfile.v0</code>，那def就得为空，因为这时候不接受标准输入了，会从<code>--local dockerfile=.</code>中读取构建信息。</p>
 <p>可以注意到，下一步就是进入到了小写的<code>solve</code>这个函数，在golang里，是区分大小写的，也就是说这是两个函数。<br />
-并且golang认为大写开头的就相当于public函数，而小写开头的就是private函数，适应后感觉也挺方便。<br />
-<img src="./img/Screen%20Shot%202021-11-10%20at%208.09.36%20PM.png" alt="Screen Shot 2021-11-10 at 8.09.36 PM.png" /><br />
-算上前面两个solve，这时第三个solve又出现了 - <code>c.controlClient().Solve(...)</code>。</p>
-<p>当我们直接跳转到第三个Solve时，来到了接口定义处：<br />
-<img src="./img/Screen%20Shot%202021-11-10%20at%208.13.19%20PM.png" alt="Screen Shot 2021-11-10 at 8.13.19 PM.png" /><br />
-当全局搜索时，发现有很多solve，这可怎么办？<br />
-突然想起这是由<code>c.controlClient()</code>所返回对象的方法，那就先看看究竟返回了个啥：<br />
-<img src="./img/Screen%20Shot%202021-11-10%20at%208.15.52%20PM.png" alt="Screen Shot 2021-11-10 at 8.15.52 PM.png" /><br />
-原来到了这里，那就是说这个结构体实现了solve方法，果不其然：<br />
-<img src="./img/Screen%20Shot%202021-11-10%20at%208.17.01%20PM.png" alt="Screen Shot 2021-11-10 at 8.17.01 PM.png" /><br />
-再一次出现了solve，这一次还是个远程调用<code>c.cc.Invoke(ctx, &quot;/moby.buildkit.v1.Control/Solve&quot;, ...)</code></p>
+并且golang认为大写开头的就相当于public函数，而小写开头的就是private函数，适应后感觉也挺方便。</p>
+<p><img src="./img/ControlClientSolve.png" alt="ControlClientSolve.png" /></p>
+<p>算上前面两个solve，这时第三个solve又出现了 - <code>c.controlClient().Solve(...)</code>。</p>
+<p>当我们直接跳转到第三个Solve时，来到了接口定义处：</p>
+<p><img src="./img/ControlClientInterface.png" alt="ControlClientInterface.png" /></p>
+<p>当全局搜索时，发现有很多solve，这可怎么办？<br />
+突然想起这是由<code>c.controlClient()</code>所返回对象的方法，那就先看看究竟返回了个啥：</p>
+<p><img src="./img/ControlPbControlClient.png" alt="ControlPbControlClient.png" /></p>
+<p>原来到了这里，那就是说这个结构体实现了solve方法，果不其然：</p>
+<p><img src="./img/ControlPbSolve.png" alt="ControlPbSolve.png" /></p>
+<p>再一次出现了solve，这一次还是个远程调用<code>c.cc.Invoke(ctx, &quot;/moby.buildkit.v1.Control/Solve&quot;, ...)</code></p>
 <p>这下好了，上哪儿找c.cc去，frontend还不见了。<br />
 看着凉了的茶水，肚子也咕咕叫了几下。<br />
 那就明天去问问龙飞吧，看看有什么建议。</p>
