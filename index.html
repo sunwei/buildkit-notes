@@ -519,19 +519,19 @@ func main() {
 <p>我顺着<code>buildctl build</code>命令，看到了<code>control.pb.go</code>文件里的c.cc.Invoke，后面编辑器就没法帮我定位到下面的函数了，不知道从哪儿查起了。</p>
 <p>龙飞听完，想了想，很快说到，应该是前端的请求最后一步了，发出GRPC请求。<br />
 接下来就是<code>buildkitd</code>接收到请求，开始处理了。<br />
-说着打开源码，快速找到<code>buildkit/cmd/buildkitd/main.go</code>的<code>main</code>函数的GRPC服务相关的代码：<br />
-<img src="./img/Screen%20Shot%202021-11-11%20at%207.48.25%20PM.png" alt="Screen Shot 2021-11-11 at 7.48.25 PM.png" /></p>
+说着打开源码，快速找到<code>buildkit/cmd/buildkitd/main.go</code>的<code>main</code>函数的GRPC服务相关的代码：</p>
+<p><img src="./img/BuildkitdNewController.png" alt="BuildkitdNewController.png" /></p>
 <p>就像代码里提到的，先创建一个controller，然后将controller注册到服务，最后启动服务，当然这里是GRPC服务。这样就可以接收并处理前端的请求。<br />
 从前面得知，请求的链接是<code>moby.buildkit.v1.Control/Solve</code>，那我们可以猜测一下这个服务地址是需要提前注册的，对吧。<br />
 那我们看看controller.Register(...)这个操作。</p>
-<p>随着一步步跳转，果然&quot;Solve&quot;这个方法出现在眼前：<br />
-<img src="./img/Screen%20Shot%202021-11-11%20at%208.00.34%20PM.png" alt="Screen Shot 2021-11-11 at 8.00.34 PM.png" /></p>
-<p>并且显示的处理方法是<code>_Control_Solve_Handler</code>：<br />
-<img src="./img/Screen%20Shot%202021-11-11%20at%208.02.33%20PM.png" alt="Screen Shot 2021-11-11 at 8.02.33 PM.png" /><br />
-这里代码显示的是会找到server，并调用<code>Solve</code>方法。</p>
+<p>随着一步步跳转，果然&quot;Solve&quot;这个方法出现在眼前：</p>
+<p><img src="./img/GrpcService.png" alt="GrpcService.png" /></p>
+<p>并且显示的处理方法是<code>_Control_Solve_Handler</code>：</p>
+<p><img src="./img/GrpcHandler.png" alt="GrpcHandler.png" /></p>
+<p>这里代码显示的是会找到server，并调用<code>Solve</code>方法。</p>
 <p>然后我们再回过头来看看<code>newController</code>所创建的对象，因这这个对象被注册到了server里，那我们现在去确认一下，这个对象是否有<code>Solve</code>方法，如果要保险，可以再确认一下其它的方法，像<code>DiskUsage, ListWorkers</code>。</p>
-<p>经过简单的查找，果然：<br />
-<img src="./img/Screen%20Shot%202021-11-11%20at%208.06.54%20PM.png" alt="Screen Shot 2021-11-11 at 8.06.54 PM.png" /></p>
+<p>经过简单的查找，果然：</p>
+<p><img src="./img/NewControllerSolve.png" alt="NewControllerSolve.png" /></p>
 <p>controller的方法里，确实包含了我们想要的对象，终于连接上了，看来可以从这里再继续探索了。</p>
 <p>袁小白一边感谢着龙飞，一边不禁心生敬意。</p>
 <p>真是山穷水尽疑无路，柳暗花明又一春。</p>
@@ -543,43 +543,43 @@ func main() {
 <p>有了龙飞的指导后，总算是将断了的线索又重新给接了起来。<br />
 袁小白的理解是，前面就像是客户端，准备参数，向服务器发送请求，服务器接收到请求后，进行处理。<br />
 而且服务器提供的是GRPC类型的服务，应用的是HTTP协议。<br />
-基于这样的理解，袁小白搓着手，信心满满的打开了下一个<code>Solve</code>方法：<br />
-<img src="./img/Screen%20Shot%202021-11-12%20at%208.01.06%20PM.png" alt="Screen Shot 2021-11-12 at 8.01.06 PM.png" /><br />
-可以看到，在control里面，调用solver，并进行<code>Solver</code>。<br />
+基于这样的理解，袁小白搓着手，信心满满的打开了下一个<code>Solve</code>方法：</p>
+<p><img src="./img/ControlSolverSolve.png" alt="ControlSolverSolve.png" /></p>
+<p>可以看到，在control里面，调用solver，并进行<code>Solver</code>。<br />
 这里的参数什得我们关注，如有传入Frontend相关信息，不过req.Frontend是字符型，也就是说这里传的只是Frontend的类别，比如咱们这里就是dockerfile。<br />
 下面的Definition也值得我们关注，还记得前面有提到，如果是<code>./example | buildctl build</code>，那么这里的Definition就是从标准输入读取的，目前我们用的是读取dockerfile的方法，也就是说这一项是为空的。</p>
-<p>接下来再看<code>c.solver.Solve(...)</code>:<br />
-<img src="./img/Screen%20Shot%202021-11-12%20at%208.07.54%20PM.png" alt="Screen Shot 2021-11-12 at 8.07.54 PM.png" /><br />
-终于我们看到了frontend.Result，也就是说这里会用到Frontend，解析dockerfile后，产出结果。<br />
+<p>接下来再看<code>c.solver.Solve(...)</code>:</p>
+<p><img src="./img/FrontendResult.png" alt="FrontendResult.png" /></p>
+<p>终于我们看到了frontend.Result，也就是说这里会用到Frontend，解析dockerfile后，产出结果。<br />
 在这里分了两种情况：</p>
 <ul>
 <li>如果req.Definition == nil且req.Frontend == &quot;&quot;，很明显，我们不属于这种情况</li>
 <li>剩下的都是由s.Bridge(j).Solve(...)来处理了</li>
 </ul>
-<p>自然而然，袁小白，又打开了bridge，查找起了又一个Solve:<br />
-<img src="./img/Screen%20Shot%202021-11-12%20at%208.15.24%20PM.png" alt="Screen Shot 2021-11-12 at 8.15.24 PM.png" /><br />
-果不其然，这里我们终于找到了frontend使用的地方，通过b.frontends map用req.Frontend取得frontend实例，然后用f.Solve真正的开开始解析。</p>
+<p>自然而然，袁小白，又打开了bridge，查找起了又一个Solve:</p>
+<p><img src="./img/BridgeSolve.png" alt="BridgeSolve.png" /></p>
+<p>果不其然，这里我们终于找到了frontend使用的地方，通过b.frontends map用req.Frontend取得frontend实例，然后用f.Solve真正的开开始解析。</p>
 <p>那这些实例又是在哪儿初始化的呢？<br />
 这时，袁小白想起来龙飞说的话 - 初始化都是在创建controller实例了时候进行的。<br />
-想到这，就打开了buildkitd，的主函数，并查找实例化controller的地方：<br />
-<img src="./img/Screen%20Shot%202021-11-12%20at%208.21.19%20PM.png" alt="Screen Shot 2021-11-12 at 8.21.19 PM.png" /><br />
-果然如龙飞所说，就是在newController的时候，也初始化好了frontends，并且这里就有dockerfile的类型，而且保存的是一个GatewayForwarder实例，但可以看出，真正处理的还是dockerfile.Build方法，终于找到了这里，袁小白不禁兴奋的咽了口口水。</p>
-<p>可好景不长，这个Build函数的将近500行，扫了一眼代码，挫败感又卷土重来:<br />
-<img src="./img/Screen%20Shot%202021-11-12%20at%208.26.01%20PM.png" alt="Screen Shot 2021-11-12 at 8.26.01 PM.png" /><br />
-没办法，只好硬着头皮上了。</p>
+想到这，就打开了buildkitd，的主函数，并查找实例化controller的地方：</p>
+<p><img src="./img/NewControllerFrontends.png" alt="NewControllerFrontends.png" /></p>
+<p>果然如龙飞所说，就是在newController的时候，也初始化好了frontends，并且这里就有dockerfile的类型，而且保存的是一个GatewayForwarder实例，但可以看出，真正处理的还是dockerfile.Build方法，终于找到了这里，袁小白不禁兴奋的咽了口口水。</p>
+<p>可好景不长，这个Build函数的将近500行，扫了一眼代码，挫败感又卷土重来:</p>
+<p><img src="./img/NewControllerBuild.png" alt="NewControllerBuild.png" /></p>
+<p>没办法，只好硬着头皮上了。</p>
 <p>前面的一些常规配置读取到还无关紧要，但后面的一串操作让袁小白不知所措。<br />
-比如llb系列：<br />
-<img src="./img/Screen%20Shot%202021-11-12%20at%208.29.06%20PM.png" alt="Screen Shot 2021-11-12 at 8.29.06 PM.png" /></p>
-<p>再比如这个长长的Dockerfile2LLB方法：<br />
-<img src="./img/Screen%20Shot%202021-11-12%20at%208.30.22%20PM.png" alt="Screen Shot 2021-11-12 at 8.30.22 PM.png" /></p>
-<p>最奇怪的是，这里面又来了一次c.Resolve:<br />
-<img src="./img/Screen%20Shot%202021-11-12%20at%208.31.29%20PM.png" alt="Screen Shot 2021-11-12 at 8.31.29 PM.png" /><br />
-咱们不是刚从client.Solve过来的吗？</p>
+比如llb系列：</p>
+<p><img src="./img/LLBLocal.png" alt="LLBLocal.png" /></p>
+<p>再比如这个长长的Dockerfile2LLB方法：</p>
+<p><img src="./img/Dockerfile2LLB.png" alt="Dockerfile2LLB.png" /></p>
+<p>最奇怪的是，这里面又来了一次c.Resolve:</p>
+<p><img src="./img/ClientSolveRequest.png" alt="ClientSolveRequest.png" /></p>
+<p>咱们不是刚从client.Solve过来的吗？</p>
 <p>问题一个接一个，实在是泥牛入海，使不上劲的感觉。</p>
 <h1>数据结构</h1>
 <p>龙飞似乎预感到了袁小白会再次发现新的疑惑点，因为龙飞自己通过上一次和袁小白一起梳理后，也感觉到有一些细节在第一次的梳理时，是有漏掉的，带着这些新的线节，龙飞将Frontends flow又重新整理了一遍：</p>
-<p><img src="./img/Frontends%20flow.jpg" alt="Frontends flow.jpg" /><br />
-袁小白一看见这张图，好像脑子里正在到处游走的信息，一下子都找到了自己的位置，独立确有了明显的规律。</p>
+<p><img src="./img/FrontendsFlow.jpg" alt="FrontendsFlow.jpg" /></p>
+<p>袁小白一看见这张图，好像脑子里正在到处游走的信息，一下子都找到了自己的位置，独立确有了明显的规律。</p>
 <p>看到袁小白的目光被Frontend flow给吸引住，龙飞开始说道。</p>
 <p>这个解析流程确实有点绕，单单一个solve，就出现了8次，这就会让我们产生一些疑问：这些solve都是一个意思吗，在不同的对象里，如buildctl, client, control, solver等等，这些solve在这些对象里难道都是拥有同样的意义？<br />
 不过不要急，让我们按这个流程再走一遍，看看作者到底想表达什么？</p>
@@ -590,10 +590,10 @@ func main() {
 <li>终于，可以发出解析请求了，这里需要发送的是grpc请求 - moby.buildkit.v1.Control/Solve</li>
 <li>前端发出请求后，剩下的也就要交给后端了，这里后端为了处理好解析请求，需要做好充足的准备。比如需要准备好frontends实例，因为需求上需要支持多种不同的frontend，而dockerfile只是前端的一种，况且这还是亲儿子，必需得支持好。其次为了GRPC的注册和管理能统一管理，这里control需要关心的就是提供对应的方法函数。而GRPC服务相关的就交给controller.Register了，像URL匹配，及GRPC服务相关的设置项都统一提前准备好。因为有了这些准备，control成功接收了前端发来的解析请求。</li>
 <li>为了正确解析，solver需要将真正提供解析服务的frontend关联起来，所以需要一个bridge</li>
-<li>bridge并不能自己解析，需要找到真正的frontend实例，如这里的frontends[&quot;dockerfile.v0&quot;]，也就是frontend中dockerfile提供的build方法，因为需要解析中间状态，所以有一个回调，这里要注意，虽然都是调用的llbbridge.solve，但两次所走的代码分支是不一样的：<br />
-<img src="./img/Screen%20Shot%202021-11-13%20at%208.24.56%20PM.png" alt="Screen Shot 2021-11-13 at 8.24.56 PM.png" /><br />
-分别是第一次req里传过来的是字符型frontend种类，第二次是经过解析后的拥有req.Definition，并用ResultProxy封装了已解析的dockerfile信息，只不过转换成了Definition。</li>
+<li>bridge并不能自己解析，需要找到真正的frontend实例，如这里的frontends[&quot;dockerfile.v0&quot;]，也就是frontend中dockerfile提供的build方法，因为需要解析中间状态，所以有一个回调，这里要注意，虽然都是调用的llbbridge.solve，但两次所走的代码分支是不一样的：</li>
 </ul>
+<p><img src="./img/DefaultFrontend.png" alt="DefaultFrontend.png" /></p>
+<p>分别是第一次req里传过来的是字符型frontend种类，第二次是经过解析后的拥有req.Definition，并用ResultProxy封装了已解析的dockerfile信息，只不过转换成了Definition。</p>
 <p>这里也正是袁小白不明白的地方，为什么在dockerfile.build里，又会出现c.solve，终于在这里找到了答案。</p>
 <p>但是，如果想要更清楚的理解这里面的逻辑关系，我们需要梳理出数据的形式转换过程：</p>
 <p><strong>dockerfile -&gt; Definition -&gt; Edge</strong></p>
@@ -608,14 +608,14 @@ func main() {
 <p>周未袁小白闲着无聊，脑海里又浮现了龙飞提出来的问题：<br />
 <strong>数据结构之间的关系到底是什么样的？</strong></p>
 <p>带着这个问题，袁小白想到，目前看到了dockerfile.build，在这里面出现了三个地方是和数据相关的。</p>
-<p>一个是将dockerfile转换成src，虽然还没有看这里的实现细节，看起来好像是将dockerfile转换成了llb语言：<br />
-<img src="./img/Screen%20Shot%202021-11-14%20at%2010.12.54%20AM.png" alt="Screen Shot 2021-11-14 at 10.12.54 AM.png" /></p>
-<p>还有一个就是dockerfiel2llb.Dockerfile2LLB:<br />
-<img src="./img/Screen%20Shot%202021-11-14%20at%2010.14.56%20AM.png" alt="Screen Shot 2021-11-14 at 10.14.56 AM.png" /><br />
-这里不禁让袁小白有点困惑，前面不是已经转了吗，为什么这个地方还又再转一次？难道两次不一样？</p>
-<p>最后这个地方也来源自dockerfile2llb.Dockerfile2LLB，因为这里有一个依赖条件，那就是参数中的<strong>dtDockerfile</strong>这个[]byte类型，将硬盘上的dockerfile加载到了内存空间，那这个又是在哪里准备的呢？<br />
-<img src="./img/Screen%20Shot%202021-11-14%20at%2010.20.15%20AM.png" alt="Screen Shot 2021-11-14 at 10.20.15 AM.png" /><br />
-虽然找到了这些信息是如何读取的，解决了一个问题。<br />
+<p>一个是将dockerfile转换成src，虽然还没有看这里的实现细节，看起来好像是将dockerfile转换成了llb语言：</p>
+<p><img src="./img/BuildLLBLocal.png" alt="BuildLLBLocal.png" /></p>
+<p>还有一个就是dockerfiel2llb.Dockerfile2LLB:</p>
+<p><img src="./img/Dockerfile2LLB2.png" alt="Dockerfile2LLB2.png" /></p>
+<p>这里不禁让袁小白有点困惑，前面不是已经转了吗，为什么这个地方还又再转一次？难道两次不一样？</p>
+<p>最后这个地方也来源自dockerfile2llb.Dockerfile2LLB，因为这里有一个依赖条件，那就是参数中的<strong>dtDockerfile</strong>这个[]byte类型，将硬盘上的dockerfile加载到了内存空间，那这个又是在哪里准备的呢？</p>
+<p><img src="./img/ResSingleRef.png" alt="ResSingleRef.png" /></p>
+<p>虽然找到了这些信息是如何读取的，解决了一个问题。<br />
 但是又出现了三个问题：<br />
 为什么这里又要c.Solve一下？<br />
 为什么要取出res.SingleRef？<br />
@@ -624,17 +624,17 @@ ref又是什么？</p>
 <p>目前对LLB的了解，似乎接近于零，因为哪怕是从贾大智对大致架构的<a href="https://juejin.cn/post/7028192294016647182">解读</a>，都没有提到这一块。<br />
 这真是让人难以相信，这么重要的模块居然没有说明！</p>
 <p>袁小白很快便找到了llb位置所在，位于client包下：</p>
-<p><img src="./img/Screen%20Shot%202021-11-14%20at%2010.33.28%20AM.png" alt="Screen Shot 2021-11-14 at 10.33.28 AM.png" /></p>
+<p><img src="./img/LLBFolder.png" alt="LLBFolder.png" /></p>
 <p>看着这么多的新文件，这让袁小白感觉又进入了另一个元宇宙...</p>
 <p>不过让人开心的是，这里有很多以_test结尾的文件，习惯了TDD（Test Driven Development - 测试驱动开发）后，感觉测试就是另一种类型的文档，不仅能说明很多信息，还可以用来执行，解答疑惑。</p>
 <p>但袁小白很快发现，这些都是一些局部的测试，并没有让自己有一个全局的理解，LLB到底是干什么的？<br />
-通过全局查找，袁小白似乎看到了希望：<br />
-<img src="./img/Screen%20Shot%202021-11-14%20at%2010.46.31%20AM.png" alt="Screen Shot 2021-11-14 at 10.46.31 AM.png" /><br />
-在buildkit0这个例子中，正好讲的就是LLB的使用方法，看起来好像是将dockerfile中一行行的指令用另一种形式组织起来，并且可以同时梳理出多个dockerfile之间的关联！</p>
+通过全局查找，袁小白似乎看到了希望：</p>
+<p><img src="./img/ExampleBuildkit0.png" alt="ExampleBuildkit0.png" /></p>
+<p>在buildkit0这个例子中，正好讲的就是LLB的使用方法，看起来好像是将dockerfile中一行行的指令用另一种形式组织起来，并且可以同时梳理出多个dockerfile之间的关联！</p>
 <h1 id="llb">LLB简单不简单</h1>
-<p>找到这个用例<code>examples/buildkit0/buildkit.go</code>之后，袁小白精神为之一振，试了运行了一下测试，可以跑通：<br />
-<img src="./img/Screen%20Shot%202021-11-15%20at%207.32.12%20PM.png" alt="Screen Shot 2021-11-15 at 7.32.12 PM.png" /><br />
-虽然从结果来看，好像没有太多信息，但这说明可以借助一些日志信息帮助理解，信心也就变得更足了。</p>
+<p>找到这个用例<code>examples/buildkit0/buildkit.go</code>之后，袁小白精神为之一振，试了运行了一下测试，可以跑通：</p>
+<p><img src="./img/ExampleBuildkit0Result.png" alt="ExampleBuildkit0Result.png" /></p>
+<p>虽然从结果来看，好像没有太多信息，但这说明可以借助一些日志信息帮助理解，信心也就变得更足了。</p>
 <h2 id="main">main</h2>
 <pre class="golang"><code>func main() {
    var opt buildOpt
@@ -750,19 +750,19 @@ ref又是什么？</p>
 </ul>
 <p>袁小白越想越兴奋 - LLB用起来还挺简单的，一看就明白，可实现起来，好像还真不简单！</p>
 <h1 id="llb.state">神奇的llb.State</h1>
-<p>回想起因为dockerfile.Build里如何使用llb的场景：<br />
-<img src="./img/Screen%20Shot%202021-11-16%20at%207.49.36%20PM.png" alt="Screen Shot 2021-11-16 at 7.49.36 PM.png" /><br />
-袁小白想着，对llb有了大概的理解后，如何找到一个难度适宜的例子，对llb.State进行学习呢。</p>
-<p>经过一番查找，真是黄天不负有心人，还真就找到了：<br />
-<img src="./img/Screen%20Shot%202021-11-16%20at%207.52.58%20PM.png" alt="Screen Shot 2021-11-16 at 7.52.58 PM.png" /><br />
-从名字上来看，这个测试用例测试的场景是默认平台。<br />
+<p>回想起因为dockerfile.Build里如何使用llb的场景：</p>
+<p><img src="./img/LLBLocal3.png" alt="LLBLocal3.png" /></p>
+<p>袁小白想着，对llb有了大概的理解后，如何找到一个难度适宜的例子，对llb.State进行学习呢。</p>
+<p>经过一番查找，真是黄天不负有心人，还真就找到了：</p>
+<p><img src="./img/TestDefaultPlatform.png" alt="TestDefaultPlatform.png" /></p>
+<p>从名字上来看，这个测试用例测试的场景是默认平台。<br />
 通过<code>s := llb.Image(&quot;foo&quot;).Run(llb.Shlex(&quot;bar&quot;))</code>组装好构建语言，基于image - &quot;foo&quot;，运行脚本&quot;bar&quot;，然后对状态进行整治<code>s.Marshal</code>，还记得这里是可以传入默认平台的，目前是缺省，那就是用的默认平台；接着用<code>llbsolver.Load</code>来加载，这个好像是第一次出现，并且返回的类型是solver.Edge，这个类型也是第一次出现，那这个类型和之前的Definition, State又有什么关系呢？最后对比了一下默认平台和拼装的image id。</p>
 <p>为了弄清楚在整个过程中，llb.State到底起到了什么样的作用，是如何将这些状态都关联起来的。<br />
 袁小白准备从最关键的一句开始：</p>
 <pre class="golang"><code>s := llb.Image(&quot;foo&quot;).Run(llb.Shlex(&quot;bar&quot;))</code></pre>
-<p>经过一番挣扎，耗时好几个晚上的时间，终于把关系给梳理了出来：<br />
-<img src="./img/State%20concept.jpg" alt="State concept.jpg" /><br />
-从图中也可以看出，实例间的关联结构确实有点绕。</p>
+<p>经过一番挣扎，耗时好几个晚上的时间，终于把关系给梳理了出来：</p>
+<p><img src="./img/StateConcept.jpg" alt="State concept.jpg" /></p>
+<p>从图中也可以看出，实例间的关联结构确实有点绕。</p>
 <ul>
 <li>前半句<code>llb.Image(&quot;foo&quot;)</code>，创建了一个SourceOp，也就是源操作</li>
 <li>后半句<code>.Run(llb.shlex(&quot;bar&quot;))</code>，创建了一个ExecOp，执行操作</li>
@@ -775,8 +775,8 @@ ref又是什么？</p>
 <p>这样梳理下来，确实清晰了不少，但整体的感觉还是很模糊。<br />
 为了再找到一些线索，袁小白决定从源码的角度再梳理总结一遍，看能不能得到一些启发。</p>
 <h1 id="llb.state">神奇llb.State之代码实现</h1>
-<p>为了更好的理解作者的意图，袁小白决定把看过的代码，结合状态图再梳理一遍：<br />
-<img src="./img/State%20concept.jpg" alt="State concept.jpg" /></p>
+<p>为了更好的理解作者的意图，袁小白决定把看过的代码，结合状态图再梳理一遍：</p>
+<p><img src="./img/StateConcept.jpg" alt="State concept.jpg" /></p>
 <h2 id="llb.imagefoo">llb.Image(&quot;foo&quot;)</h2>
 <p>因为我们只是传入了一个image ref，并没有其它的任何参数，代码可以简化为：</p>
 <pre class="golang"><code>func Image(ref string, opts ...ImageOption) State {
@@ -785,13 +785,13 @@ ref又是什么？</p>
    src := NewSource(&quot;docker-image://&quot;+ref, attrs, info.Constraints)
    ...
    return NewState(src.Output())</code></pre>
-<p>从代码中，可以看出主流程做了三件事，一是将传入的<code>ref</code>进行解析，这里的<code>reference.ParseNormalizedNamed</code>方法，来自于docker:<br />
-<img src="./img/Screen%20Shot%202021-11-17%20at%207.18.43%20PM.png" alt="Screen Shot 2021-11-17 at 7.18.43 PM.png" /><br />
-二是新建了Source：<br />
-<img src="./img/Screen%20Shot%202021-11-17%20at%207.20.17%20PM.png" alt="Screen Shot 2021-11-17 at 7.20.17 PM.png" /><br />
-这里出现了SourceOp，其中包含了它的output，就像我们最开始的状态图所示：<br />
-<img src="./img/State%20concept（副本）.jpg" alt="State concept（副本）.jpg" /><br />
-三是用src.Output() - s.output创建了新状态并返回，也就是说这里才是State被创建的地方。</p>
+<p>从代码中，可以看出主流程做了三件事，一是将传入的<code>ref</code>进行解析，这里的<code>reference.ParseNormalizedNamed</code>方法，来自于docker:</p>
+<p><img src="./img/NormalizedName.png" alt="NormalizedName.png" /></p>
+<p>二是新建了Source：</p>
+<p><img src="./img/NewSource.png" alt="NewSource.png" /></p>
+<p>这里出现了SourceOp，其中包含了它的output，就像我们最开始的状态图所示：</p>
+<p><img src="./img/StateConceptCopy.jpg" alt="StateConceptCopy.jpg" /></p>
+<p>三是用src.Output() - s.output创建了新状态并返回，也就是说这里才是State被创建的地方。</p>
 <pre class="golang"><code>func NewState(o Output) State {
    s := State{
       out: o,
@@ -850,8 +850,8 @@ func dirf(value string, replace bool, v ...interface{}) StateOption {
 <li>每个State都有output</li>
 <li>每个State都是一个结点，有自己的key, value，并且value是可以接收Constraints的函数，可灵活处理不同的情况</li>
 </ul>
-<p>回到我们的状态图来看，也就来到了下面的状态：<br />
-<img src="./img/State%20concept副本1.jpg" alt="State concept（副本） (1).jpg" /></p>
+<p>回到我们的状态图来看，也就来到了下面的状态：</p>
+<p><img src="./img/StateConceptCopy1.jpg" alt="StateConceptCopy1.jpg" /></p>
 <h3 id="runllb.shlexbar">.Run(llb.shlex(&quot;bar&quot;))</h3>
 <pre class="golang"><code>func (s State) Run(ro ...RunOption) ExecState {
    ei := &amp;ExecInfo{State: s}
@@ -889,7 +889,7 @@ func (s State) WithOutput(o Output) State {
    return s
 }</code></pre>
 <p>从<code>Run</code>函数可以看出，先创建出了ExecInfo，这里将会收集创建NewExecOp所需的参数信息，其中ReadonlyRootFS将永定ExecOp的output，也就是e.root的值，如果readOnly为true，就和上一个State一样，但这里我们走的流程是else，也就新创建了一个output，最后返回的是ExecState：<br />
-<img src="./img/State%20concept.jpg" alt="State concept.jpg" /></p>
+<img src="./img/StateConcept.jpg" alt="StateConcept.jpg" /></p>
 <p>这样我们就走完了这个简单用例的全流程。<br />
 理解上好像是清楚了一点，那接着往下看：</p>
 <pre class="golang"><code>func TestDefaultPlatform(t *testing.T) {
@@ -981,9 +981,9 @@ def也传了进去，看来猜想的没错，确实是用来存储数据的。</
    cache[dgst] = struct{}{}
    return def, nil
 }</code></pre>
-<p>可以看出这里有一个递归调用小marshal，如果v.Inputs()不为空，那么就会触发递归：<br />
-<img src="./img/buildkit%20dag（副本）.jpg" alt="buildkit dag（副本）.jpg" /><br />
-贾大智还说过，看递归，主要看两点，一个是抽象出递规函数要做的事情，也就是会重复被调用的动作，再就是看出口，也就是退出递归的地方。</p>
+<p>可以看出这里有一个递归调用小marshal，如果v.Inputs()不为空，那么就会触发递归：</p>
+<p><img src="./img/buildkitDagCopy.jpg" alt="buildkitDagCopy.jpg" /></p>
+<p>贾大智还说过，看递归，主要看两点，一个是抽象出递规函数要做的事情，也就是会重复被调用的动作，再就是看出口，也就是退出递归的地方。</p>
 <p>这里正好可以试验下这种方法：</p>
 <ul>
 <li>递归函数就是小marshal，主要是用来将Vertex整理成对应的Definition。</li>
@@ -1080,11 +1080,11 @@ def也传了进去，看来猜想的没错，确实是用来存储数据的。</
 <p>话是这么说，袁小白不禁心里还是泛起了嘀咕：你怎么不去梳理啊。</p>
 <p>想归想，袁小白还是找机会，认真的看起了源码。</p>
 <h2 id="marshal">递归Marshal思想</h2>
-<p><img src="./img/buildkit%20dag（副本）.jpg" alt="buildkit dag（副本）.jpg" /></p>
+<p><img src="./img/buildkitDagCopy.jpg" alt="buildkitDagCopy.jpg" /></p>
 <h2>递归实例理解</h2>
-<p>基于对<code>examples/buildkit0/buildkit.go</code>实例的理解，加上理解到的递归思想，袁小白对用例进行了梳理：<br />
-<img src="./img/LLB%20Flow（副本）.jpg" alt="LLB Flow（副本）.jpg" /><br />
-从图中可以看出清晰的递归调用流程：</p>
+<p>基于对<code>examples/buildkit0/buildkit.go</code>实例的理解，加上理解到的递归思想，袁小白对用例进行了梳理：</p>
+<p><img src="./img/LLBFlowCopy.jpg" alt="LLBFlowCopy.jpg" /></p>
+<p>从图中可以看出清晰的递归调用流程：</p>
 <ol>
 <li>基于构建好的llb.State链表，如果要进行Marshal，最先会从最后一个结点开始进行递归，但为例子中所有的操作都是SourceOp和ExecOp类型，所以都会有自己的Marshal方法。</li>
 <li>如果有多重依赖，会按顺序完成对应的递归，如图中步骤3, 9, 16都是SourceOp</li>
@@ -1093,7 +1093,7 @@ def也传了进去，看来猜想的没错，确实是用来存储数据的。</
 <p>从结构上来看，像是一颗反过来的树。</p>
 <h2 id="llb.state">llb.State实例理解</h2>
 <p>如果要将准备好的State都转化成Definition，那对应的llb.State调用顺序又会长什么样呢：<br />
-<img src="./img/LLB%20Flow副本1.jpg" alt="LLB Flow（副本） (1).jpg" /><br />
+<img src="./img/LLBFlowCopy1.jpg" alt="LLBFlowCopy1.jpg" /><br />
 通过梳理：</p>
 <ol>
 <li>可以看到起先是各自独立的State，如S1, S2, S3，也就是通过llb.Image创建的结果，这时他们互相并不知道对方的存在，并没有关联</li>
@@ -1271,8 +1271,8 @@ func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Dige
    return vtx, nil
 }</code></pre>
 <p>主要目的就是创建vertex，但值得注意的是在op.Inputs的循环中，又调用了传入的<code>load()</code>，这个load就是上面的<code>rec</code>。</p>
-<p><img src="./img/Edge%20concept.jpg" alt="Edge concept.jpg" /><br />
-没错，这里又出现了递归。<br />
+<p><img src="./img/EdgeConcept.jpg" alt="EdgeConcept.jpg" /></p>
+<p>没错，这里又出现了递归。<br />
 像之前理解递归一样，我们需要关注两点：</p>
 <ul>
 <li>递归函数的目的就是创建vertex</li>
@@ -1370,8 +1370,8 @@ func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Dige
 <p>真是把自己牛X坏了...</p>
 <p>再看龙飞的时序图，真是不得不佩服，接下来就看真正的Build了。</p>
 <h1 id="build">是时候开始Build了</h1>
-<p>为了加强自己的理解，袁小白像以往一样，梳理了下流程图：<br />
-<img src="./img/Solver%20Bridge.jpg" alt="Solver Bridge.jpg" /></p>
+<p>为了加强自己的理解，袁小白像以往一样，梳理了下流程图：</p>
+<p><img src="./img/SolverBridge.jpg" alt="SolverBridge.jpg" /></p>
 <ol>
 <li>solver接受到请求后，在Solve方法中调用Bridge的Solve方法，开始解析</li>
 <li>在bridge中调用Frontend进行解析，这里的Frontend就是dockerfile</li>
@@ -1460,9 +1460,9 @@ func loadLLB(def *pb.Definition, fn func(digest.Digest, *pb.Op, func(digest.Dige
 </ul>
 <p>不知道要用什么样的姿势，才能正确打开jobs的load和s.build</p>
 <h1 id="jobs">jobs的世界</h1>
-<p>从龙飞给出的<code>buildctl build</code>全景时序图中可以了解到：<br />
-<img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /><br />
-Worker是用来真正运行容器的，那jobs的定位又是什么呢？</p>
+<p>从龙飞给出的<code>buildctl build</code>全景时序图中可以了解到：</p>
+<p><img src="./img/BuildctlBuild.jpg" alt="BuildctlBuild.jpg" /></p>
+<p>Worker是用来真正运行容器的，那jobs的定位又是什么呢？</p>
 <p>带着这个问题，袁小白打开了<code>j.list.load(e.Vertex, nil, j)</code>，稍早之前有看到初始化Job的时候，j.list指的是jobs.go中的Solver，所以j.list.load就是：</p>
 <pre class="golang"><code>func (jl *Solver) load(v, parent Vertex, j *Job) (Vertex, error) {
    jl.mu.Lock()
@@ -1555,9 +1555,9 @@ Worker是用来真正运行容器的，那jobs的定位又是什么呢？</p>
 <p>果然不出袁小白所料，这scheduler还真不简单 - 因为没看懂，自己琢磨了一个星期，愣是没弄明白调度器是scheduler是怎么调度的。</p>
 <p>没耐住性子，又求助了龙飞。<br />
 龙飞一如既往的没有让袁小白失望，没过多久，就按约定和袁小白讲起了自己的理解。<br />
-还是从一张图开始：<br />
-<img src="./img/scheduler.jpg" alt="scheduler.jpg" /><br />
-看着这张密集的流程图，袁小白不禁暗自感慨，这才不到两周啊，就又梳理完了？！</p>
+还是从一张图开始：</p>
+<p><img src="./img/scheduler.jpg" alt="scheduler.jpg" /></p>
+<p>看着这张密集的流程图，袁小白不禁暗自感慨，这才不到两周啊，就又梳理完了？！</p>
 <p>指着流程图，龙飞开始娓娓道来。<br />
 我是从<code>solver/scheduler_test.go</code>中的测试用例开始看的：</p>
 <ul>
@@ -1678,8 +1678,8 @@ require.Equal(t, st.Err, context.Canceled)</code></pre>
 <p>再试想一下，如果多个管道连接在一起会是什么样？<br />
 比如总共有三个管道，彼此互相联接，前一个管理的结果想要传递给后一个时，可以让后一个管理持有前一个管道的Receiver，并在前一个管道的OnSendCompletion事件中注册触发事件，那这样是不是就可以把依赖顺序设定好，并且接计划执行了？！</p>
 <p>那这个神奇的pipe到底是怎么实现的呢？<br />
-好奇心又让袁小白忍不住接着往下看了。<br />
-<img src="./img/Pipev2.jpg" alt="Pipe - v2.jpg" /></p>
+好奇心又让袁小白忍不住接着往下看了。</p>
+<p><img src="./img/Pipev2.jpg" alt="Pipe - v2.jpg" /></p>
 <p>原来pipe是由这些组件组成的，那他们又是怎么互相协作，才能变出这么神奇的魔术的呢？</p>
 <h1 id="pipe">Pipe设计原理</h1>
 <p>袁小白也看过类似的设计模式，如pipe。<br />
@@ -1818,8 +1818,8 @@ require.NoError(t, st.Err)
 require.Equal(t, st.Value.(string), &quot;res0&quot;)</code></pre></li>
 </ul>
 <h2 id="pipe-">pipe 取消流程</h2>
-<p><img src="./img/pipe%20journey%20cancel.jpg" alt="pipe journey - cancel.jpg" /><br />
-和正常流程不一样的地方在于，用户主动取消息了pipe操作，调用了<code>p.Receiver.Cancel()</code></p>
+<p><img src="./img/pipeJourneyCancel.jpg" alt="pipeJourneyCancel.jpg" /></p>
+<p>和正常流程不一样的地方在于，用户主动取消息了pipe操作，调用了<code>p.Receiver.Cancel()</code></p>
 <pre class="golang"><code>p.Receiver.Cancel()
 &lt;-waitSignal</code></pre>
 <ul>
@@ -1895,10 +1895,10 @@ if err != nil {
 e.Vertex = v
 ...</code></pre>
 <p>将原有的e.Vertex转换成了j.list.load的返回值，就是vertexWithCachOptions，而这个新的vertex，实现了Vertex的所有接口，其中就实现了<code>Inputs() []Edge</code>，也就是在这里将所有的Edge都关联了起来：</p>
-<p><img src="./img/Edges%20inputs.jpg" alt="Edges inputs.jpg" /></p>
+<p><img src="./img/EdgesInputs.jpg" alt="Edges inputs.jpg" /></p>
 <p>用我们常用的例子来理解，我们现在有两个Op，一个是SourceOp，另一个是ExecOp，都被包裹在了常规的vertex中，为了对Edge进行构建，我们需要将这些初始的vertex包装成vertexWithCacheOptions，并用Edge来进行关联。<br />
 这样，DAG图变得更清晰了：</p>
-<p><img src="./img/Edges%20inputs%20DAG.jpg" alt="Edges inputs DAG.jpg" /></p>
+<p><img src="./img/EdgesInputsDAG.jpg" alt="Edges inputs DAG.jpg" /></p>
 <p>DAG有向无环图是由结点Vertex和边Edge组成。<br />
 目前我们的结点进行封闭后，最外层是vertexWithCacheOptions，原始层就是vertex，而vertex又连接着Op，也就是operation，我们这个简单的例子中有两个Op。<br />
 Vertex之间的关联方式是用<code>Inputs()</code>关联起来的，而Input就是Edge。<br />
@@ -2061,7 +2061,7 @@ func (s *scheduler) dispatch(e *edge) {
 <li><code>added := e.createInputRequests(...)</code>，如果是可执行的Op，要看看依赖有没有准备好，也就是自己的Inputs，又会创建新的pipe。</li>
 </ul>
 <p>这一环环的梳理下来后，如何更直观的理解呢？<br />
-<img src="./img/Edges%20inputs%20edge%20pipes.jpg" alt="Edges inputs - edge pipes.jpg" /></p>
+<img src="./img/EdgesInputsEdgePipes.jpg" alt="Edges inputs - edge pipes.jpg" /></p>
 <ul>
 <li>从Edge0开始构建，创建了一个只关心<code>close(wait)</code>的pipe0</li>
 <li>进入到<code>unpark</code>后，会检查自己Op的CacheMap，也就是这里的第二步，创建的pipe1，pipe1是从pipe0来，所以发送完成的时候会发送edge0信号，这样再次分发的dispatch事件就可以让edge0的pipe获取所需要内容，看看是否已经完成</li>
@@ -2070,7 +2070,7 @@ func (s *scheduler) dispatch(e *edge) {
 </ul>
 <p>可以看出这也是一个递归，而pipe的作用就是将大家都关联起来，可以触发回调事件，这里是<code>s.dispatch</code>，<code>s.loop</code>就像事件总线，负责监听新事件，并发送。</p>
 <p>既然是递归，那就有了口，那edge的出口又在哪儿呢，是怎么判断自己完成了呢？<br />
-<img src="./img/Edges%20inputs%20edge%20pipes1.jpg" alt="Edges inputs - edge pipes (1).jpg" /><br />
+<img src="./img/EdgesInputsEdgePipes1.jpg" alt="Edges inputs - edge pipes (1).jpg" /><br />
 还记得s.incoming, s.outgoing数组吗？<br />
 里面存储了所有的pipe，而edge递归构建的出口就在：</p>
 <pre class="golang"><code>desiredState, done := e.respondToIncoming(incoming, allPipes)</code></pre>
@@ -2079,8 +2079,8 @@ func (s *scheduler) dispatch(e *edge) {
 <p>原来如此！<br />
 Scheduler真是一位好管家，将所有的事情管理的有条不紊。</p>
 <h1 id="sourceop-cachemap">SourceOp CacheMap</h1>
-<p><img src="./img/Edges%20inputs%20edge%20pipes.jpg" alt="Edges inputs - edge pipes.jpg" /><br />
-要想理解递归，除了抽象出同样的行为外，再就是找到循环的出口。<br />
+<p><img src="./img/EdgesInputsEdgePipes.jpg" alt="Edges inputs - edge pipes.jpg" /></p>
+<p>要想理解递归，除了抽象出同样的行为外，再就是找到循环的出口。<br />
 在上一次梳理的结果中可以看到，Edge1是递归的最后一个edge，在edge中，由于SourceOp的inputs为空，所以在edge中的出口是pipe3，也就是op.CacheMap:</p>
 <pre class="golang"><code>f.NewFuncRequest(func(ctx context.Context) (interface{}, error) {
    cm, err := e.op.CacheMap(ctx, index)
@@ -2088,8 +2088,8 @@ Scheduler真是一位好管家，将所有的事情管理的有条不紊。</p>
 })</code></pre>
 <p>那现在是时候看一看这个自定义函数做了哪些处理，这样就是能调用pipe.OnSendCompletion来完成并退出这个操作，也就是递归结束开始的信号。</p>
 <p><code>e.op.CacheMap</code>究竟做了什么呢？<br />
-经过梳理，袁小白终于找到了CacheMap真正干活的那个了：<br />
-<img src="./img/Source%20of%20Truth%20CacheMap.jpg" alt="Source of Truth - CacheMap.jpg" /></p>
+经过梳理，袁小白终于找到了CacheMap真正干活的那个了：</p>
+<p><img src="./img/SourceTruthCacheMap.jpg" alt="Source of Truth - CacheMap.jpg" /></p>
 <ol>
 <li>出发点-edge unpark，在这里将op.CacheMap封装成自定义函数，用于新建pipe</li>
 <li>op来自于jobs里用newSharedOp创建出来的sharedOp，这样可以将vertex封闭成在上一阶段处理所需要的状态和信息</li>
@@ -2102,9 +2102,9 @@ Scheduler真是一位好管家，将所有的事情管理的有条不紊。</p>
 </ol>
 <p>梳理完后，袁小白不禁松了口气。<br />
 这个传递链也太长了，好多前面命名是用这个，后面是那个；要么就是从前到后用的都一个，一不留神就断掉了，难怪源码看起来这么费劲费时间。</p>
-<p>好在有龙飞的全流程图，来对比着检验一下：<br />
-<img src="./img/Buildctl%20build.jpg" alt="Buildctl build.jpg" /><br />
-关键的点都有，还有一些细节看来可以补充下。</p>
+<p>好在有龙飞的全流程图，来对比着检验一下：</p>
+<p><img src="./img/BuildctlBuild.jpg" alt="Buildctl build.jpg" /></p>
+<p>关键的点都有，还有一些细节看来可以补充下。</p>
 <p>那再看看好容易找到的最终处理代码：</p>
 <pre class="golang"><code>func (s *sourceOp) CacheMap(ctx context.Context, g session.Group, index int) (*solver.CacheMap, bool, error) {
    src, err := s.instance(ctx)
@@ -2151,9 +2151,9 @@ Scheduler真是一位好管家，将所有的事情管理的有条不紊。</p>
 
    return src.Resolve(ctx, id, sessM, vtx)
 }</code></pre>
-<p>居然是用数组存起来的：<br />
-<img src="./img/Source%20of%20Truth%20CacheMap.jpg" alt="Source of Truth - CacheMap.jpg" /><br />
-对照着operation创建的地方，袁小白很快发现SourceOp是在worker中被创建的，那这个source.Manager是不是也在那里预先装载好的呢？</p>
+<p>居然是用数组存起来的：</p>
+<p><img src="./img/SourceTruthCacheMap.jpg" alt="Source of Truth - CacheMap.jpg" /></p>
+<p>对照着operation创建的地方，袁小白很快发现SourceOp是在worker中被创建的，那这个source.Manager是不是也在那里预先装载好的呢？</p>
 <p>果然，就是在这里：</p>
 <pre class="golang"><code>// NewWorker instantiates a local worker
 func NewWorker(ctx context.Context, opt WorkerOpt) (*Worker, error) {
@@ -2243,9 +2243,9 @@ func NewWorker(ctx context.Context, opt WorkerOpt) (*Worker, error) {
 </ul>
 <p>（这里又出现了新的知识点，那就是OCI中关于Image组织形式，我们这里先挖个坑，后续会继续我们的源码解析。<br />
 为了方便理解，我们先简单的理解为Image的描述和配置信息。）</p>
-<p>再回到edge.go的unpark里：<br />
-<img src="./img/Edges%20inputs%20edge%20pipes.jpg" alt="Edges inputs - edge pipes.jpg" /><br />
-我们的pipe3这时候可以回调OnSendCompletion了。</p>
+<p>再回到edge.go的unpark里：</p>
+<p><img src="./img/EdgesInputsEdgePipes.jpg" alt="Edges inputs - edge pipes.jpg" /></p>
+<p>我们的pipe3这时候可以回调OnSendCompletion了。</p>
 <p>我们准备好了镜像的基础信息后，又要拿这些信息干什么用呢？</p>
 <h1 id="sourceop-exec">SourceOp Exec</h1>
 <p>带着镜像基础信息准备好后，又将要用来做什么的问题。<br />
@@ -2399,8 +2399,8 @@ type mutableRef struct {
 }</code></pre>
 <p>这两个Ref都是cacheRecord的拓展。<br />
 为了进一步了解她们的工作原理，袁小白打开了<code>manager_test.go</code>，仔细研读了起来。</p>
-<p>经过一番摸索，袁小白终于弄清楚了她们之间的逻辑：<br />
-<img src="./img/cache%20manager%20state1.jpg" alt="cache manager state (1).jpg" /></p>
+<p>经过一番摸索，袁小白终于弄清楚了她们之间的逻辑：</p>
+<p><img src="./img/cacheManagerState1.jpg" alt="cache manager state (1).jpg" /></p>
 <p>原来cacheRecord只是用来存储基础数据的，里面有metadata来做持久化操作，这个metadata也挺有趣，值得研究一下。<br />
 而重点是mutableRef和immutableRef，这两个状态可以互相转换。<br />
 而谁需要这两个状态呢，答案是snapshotter，当snapshotter.Prepare的时候会产生mutableRef，也就是这个时候是可以修改的；mutableRef通过Commit可以转换成immutableRef的状态；最后immutableRef可以通过finalize，并commit到snapshotter。<br />
@@ -2508,7 +2508,7 @@ type mutableRef struct {
 <p>而<code>PrepareMounts</code>重点做的事情就是将ref和将要挂载的下标MountIndex对应上，因为很有可能要挂载多层ref，而在我们在例子中，我们只有一层，那就是SourceOp的immutableRef。<br />
 而这些操作都依赖于传入的<code>e.op.Mounts</code>，看来我们有必要再梳理一下op的来源了，以帮助进一步理解ExecOp到底是如何执行的。</p>
 <h3 id="op">op的生命周期</h3>
-<p><img src="./img/Operation%20op%20lifecycle.jpg" alt="Operation - op lifecycle.jpg" /></p>
+<p><img src="./img/OperationOPLifecycle.jpg" alt="Operation - op lifecycle.jpg" /></p>
 <ul>
 <li>从将Dockerfile转换成llb.State开始，在State中，通过Output将Vertex进行关联，这里首次出现了Op，分别是SourceOp和ExecOp，他们主要是实现了Vertex接口。</li>
 <li>对于SourceOp最对应的Dockerfile信息就是id，也就是<code>From Foo</code>，让我们知道哪个是基础镜像。</li>
@@ -2572,9 +2572,9 @@ type mutableRef struct {
 最先想到的，当然还是execOp被创建的地方：</p>
 <pre class="golang"><code>ops.NewExecOp(v, op, baseOp.Platform, w.CacheMgr, w.ParallelismSem, sm, w.WorkerOpt.Executor, w)</code></pre>
 <p>发现倒数第二个参数，就是Executor - <code>w.WorkerOpt.Execcutor</code>，这里的w，自然就是worker了。<br />
-看来先要弄清楚worker的来历了：<br />
-<img src="./img/Create%20Worker（副本）.jpg" alt="Create Worker（副本）.jpg" /><br />
-经过查找，发现在runc_test.go文件中有相关的测试用例。<br />
+看来先要弄清楚worker的来历了：</p>
+<p><img src="./img/CreateWorkerCopy.jpg" alt="Create Worker（副本）.jpg" /></p>
+<p>经过查找，发现在runc_test.go文件中有相关的测试用例。<br />
 其中包含了如何创建worker:</p>
 <ul>
 <li>首先要准备好WorkerOpts，在这里面包含了很多其它的实例，像snapshotter factory用来创建快照；content store用来在本地存放镜像；还有metadata db用来存放cacheRecord的相关基础数据；而最吸个我们关注的就是runc executor，从命名来看，应该还有其它的executor</li>
@@ -2582,7 +2582,7 @@ type mutableRef struct {
 </ul>
 <p>创建是梳理清楚了，那对于我们的这个用例，这个executor又是从哪儿来，怎么配置的呢？</p>
 <h2 id="worker">Worker注册</h2>
-<p><img src="./img/worker%20lifecycle（副本）.jpg" alt="worker lifecycle（副本）.jpg" /></p>
+<p><img src="./img/workerLifecycleCopy.jpg" alt="worker lifecycle（副本）.jpg" /></p>
 <p>原来，在buildkitd启动的时候，main函数在创建controller - newController的时候，初始化了worker controller - newWorkerController，而worker controller通过执行遍历已注册的worker初始化函数，来真正的创建worker。<br />
 从图中可以看到，在真正运行main函数前，通过golang的init函数特性，我们提前将containerd workder和oci worker已经注册进去，并标明不同的优先级priority，在这里默认的worker是priority配置为0的oci。</p>
 <h2 id="worker">Worker实例化</h2>
@@ -2601,8 +2601,8 @@ type mutableRef struct {
    return wc, nil
 }</code></pre>
 <p>原来，在遍历已注册的worker初始化函数后，在newWorkerController中的遍历<code>range workerInitializers</code>中，真正的初始化了这些worker。</p>
-<p><img src="./img/worker%20lifecycle-full.jpg" alt="worker lifecycle-full.jpg" /><br />
-从上图可以看到，实际通过调用各worker的NewWorkOpt方法后，分别创建了runc ececutor，和containerd executor，根据配置，默认的是runc executor。</p>
+<p><img src="./img/workerLifecycleFull.jpg" alt="worker lifecycle-full.jpg" /></p>
+<p>从上图可以看到，实际通过调用各worker的NewWorkOpt方法后，分别创建了runc ececutor，和containerd executor，根据配置，默认的是runc executor。</p>
 <p>那么我们可以回答最开始的那个问题了，<code>e.exec.Run</code>执行的到底是哪个运行时 - runc。</p>
 <p>进到executor包，我们果然找到了<code>executor/oci/runcexecutor/executor.go</code>，打开文件，大大的Run函数映入眼帘:</p>
 <pre class="golang"><code>func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, mounts []executor.Mount, process executor.ProcessInfo, started chan&lt;- struct{}) (err error) {
@@ -2694,8 +2694,8 @@ func (w *runcExecutor) run(ctx context.Context, id, bundle string, process execu
    }, nil
 }</code></pre>
 <p>通过<code>s.Bridge(j).Solve</code>解析，获取所有的ref解析结果<code>res.EachRef - ref.Result</code>，最后导出返回值<code>exporterResponse, err = e.Export(...)</code></p>
-<p>那这里的Export指的又是什么呢？让我们将这些点都连接起来，来讲讲Export的故事：<br />
-<img src="./img/exporter%20lifecycle.jpg" alt="exporter lifecycle.jpg" /></p>
+<p>那这里的Export指的又是什么呢？让我们将这些点都连接起来，来讲讲Export的故事：</p>
+<p><img src="./img/exporterLifecycle.jpg" alt="exporter lifecycle.jpg" /></p>
 <ul>
 <li>当用户的构建指令传递给命令行buildctl时，buildAction首先接收到信息，通过ParseOutput入口，将字符串信息解析成对应的数据结构，最终得到Type为image的ExportEntry并返回，这样命令行的解析工作就完成了。</li>
 <li>当前端client将解析命令传递给后端也就是<code>buildkitd</code>时，最先接收到相关信息的是control，并通过Solve方法，将信息传递给workerController</li>
