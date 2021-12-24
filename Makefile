@@ -55,8 +55,7 @@ DOC_FILES := \
 	30.md \
 	31.md \
 	32.md \
-	33.md \
-	content.md
+	33.md
 
 FIGURE_FILES := \
 	img/dream.JPG
